@@ -99,8 +99,6 @@ case class CharsetsGen[+C <: Iterable[Char]](
             val nextRemain = remain - 1
             // 当前生成使用的字符集
             val charset = charsets(key)
-            // TODO
-            // println(s"key=$key,ch=$ch")
             // 细化各字符集长度区间
             val nextCharsets = resetLengths(
               charsets + (key -> charset.copy(
@@ -118,17 +116,9 @@ case class CharsetsGen[+C <: Iterable[Char]](
   : Map[Int, Charset[Vector[Char]]] =
     val global = Interval.point(length)
     val lengths = charsets.map((k, charset) => (k, charset.length))
-    val res = charsets.foldLeft(charsets) { case (charsets, (k, charset)) =>
+    charsets.foldLeft(charsets) { case (charsets, (k, charset)) =>
       charsets + (k -> charset.copy(length = charset.length & (global - (lengths - k).values.toList.combineAll)))
     }
-    // TODO
-    // given CanEqual[Map[Int, Charset[Vector[Char]]], Map[Int, Charset[Vector[Char]]]] = CanEqual.derived
-    // println("==========")
-    // println(s"${res == charsets}")
-    // println(s"l=$length")
-    // println(s"i=$charsets")
-    // println(s"o=$res")
-    res
 
   private[this] def filterChars(charsets: Map[Int, Charset[Vector[Char]]],
                                 consecutiveAccOption: Option[ConsecutiveAccumulation],

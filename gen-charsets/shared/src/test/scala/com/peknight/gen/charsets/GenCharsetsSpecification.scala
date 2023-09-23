@@ -127,7 +127,11 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
   property("should generate a random string") = forAll (charsetsGenSeedGen) { case (charsetsGen, random) =>
     charsetsGen(random) match
       case Left(error) =>
-        println(error)
+        println("================Start================")
+        println(s"charsetsGen=$charsetsGen")
+        println(s"random=$random")
+        println(s"error=$error")
+        println("================ End ================")
         false
       case Right(_) => true
   }
