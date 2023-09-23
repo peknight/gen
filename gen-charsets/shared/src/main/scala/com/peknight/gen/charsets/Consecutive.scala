@@ -1,4 +1,4 @@
-package com.peknight.gen.charsets.option
+package com.peknight.gen.charsets
 
 case class Consecutive(
                         // 最大连续数量，连续字符数不能超过此数量
