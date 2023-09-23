@@ -7,6 +7,7 @@ import cats.{Foldable, Monad, Monoid}
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.UnboundError
 import com.peknight.error.std.Error
+import com.peknight.gen.charsets.CharsetsGen.{betweenInterval, checkBounded, checkLength, combineAll, nextIndex}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
 import com.peknight.spire.ext.syntax.bound.{lower, upper}
@@ -39,20 +40,12 @@ case class CharsetsGen[+C <: Iterable[Char]](
     private[CharsetsGen] def liftS: EitherStateT[F, A] = EitherT(state.map(_.asRight[Error]))
   end extension
 
-  given Monoid[Interval[Int]] with
-    def empty: Interval[Int] = Interval.point(0)
-    def combine(x: Interval[Int], y: Interval[Int]): Interval[Int] = x + y
-  end given
-
-  extension [G[_]: Foldable] (intervals: G[Interval[Int]])
-    def combineAll: Interval[Int] = Foldable[G].fold(intervals)
-  end extension
 
   def apply[F[_]: Monad](random: Random[F]): F[Either[Error, String]] =
     StateT.get[F, Random[F]].liftS.flatMap { random => (
       for
         // 参数检查
-        _ <- checkConsecutive.liftE
+        _ <- checkConsecutive(consecutiveOption).liftE
         _ <- nonNegative(retry, "retry").liftE
         charsets <- listNonEmpty(charsets, "charsets").liftE
         // 各字符集长度区间检查
@@ -137,18 +130,6 @@ case class CharsetsGen[+C <: Iterable[Char]](
     // println(s"o=$res")
     res
 
-  private[this] def betweenInterval[F[_]: Monad](interval: Interval[Int]): StateT[F, Random[F], Int] =
-    val lower = interval.lowerBound match
-      case lowerBound: ValueBound[_] => lowerBound.lower
-      case _ => 0
-    val upper = interval.upperBound match
-      case upperBound: ValueBound[_] => upperBound.upper
-      case _ => Int.MaxValue
-    if upper > lower then between(lower, upper + 1) else lower.pure
-
-  private[this] def nextIndex[F[_]: Monad](size: Int): StateT[F, Random[F], Int] =
-    if size == 1 then 0.pure else nextIntBounded(size)
-
   private[this] def filterChars(charsets: Map[Int, Charset[Vector[Char]]],
                                 consecutiveAccOption: Option[ConsecutiveAccumulation],
                                 start: Boolean, end: Boolean): Map[Int, Vector[Char]] =
@@ -204,14 +185,6 @@ case class CharsetsGen[+C <: Iterable[Char]](
     else None
   end nextConsecutiveAccumulation
 
-  private[this] def checkLength(length: Interval[Int], label: String): Either[Error, Interval[Int]] =
-    intervalNonEmpty(length, label).left.map(length *: _)
-
-  private[this] def checkBounded(length: Interval[Int]): Either[Error, Interval[Int]] =
-    length.upperBound match
-      case _: ValueBound[_] => length.asRight[Error]
-      case _ => (length *: UnboundError("upperBound")).asLeft[Interval[Int]]
-
   private[this] def checkCharset(charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
     for
       chars <- nonEmpty(charset.chars, "chars")
@@ -223,11 +196,68 @@ case class CharsetsGen[+C <: Iterable[Char]](
       charset.copy(chars = chars.toVector, length = length)
   }.left.map(charset *: _)
 
-  private[this] def checkConsecutive: Either[Error, Option[Consecutive]] =
+  private[this] def checkConsecutive(consecutiveOption: Option[Consecutive]): Either[Error, Option[Consecutive]] =
     consecutiveOption.fold(consecutiveOption.asRight[Error]) { consecutive =>
       for
         _ <- positive(consecutive.max, "max")
         _ <- nonNegative(consecutive.step, "step")
       yield consecutiveOption
     }
+end CharsetsGen
+object CharsetsGen:
+
+  given Monoid[Interval[Int]] with
+    def empty: Interval[Int] = Interval.point(0)
+
+    def combine(x: Interval[Int], y: Interval[Int]): Interval[Int] = x + y
+  end given
+
+  extension[G[_] : Foldable] (intervals: G[Interval[Int]])
+    def combineAll: Interval[Int] = Foldable[G].fold(intervals)
+  end extension
+
+  def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
+  : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
+    for
+      elements <- listNonEmpty(elements.toList, "elements")
+      elements <- traverse(elements, "elements") {
+        case (k, length) => checkLength(length, "length").map((k, _)).left.map(k *: _)
+      }
+      elementSum = elements.map(_._2).combineAll
+      global <- checkLength(global & elementSum & Interval.atOrAbove(1), "global").flatMap(checkBounded)
+        .left.map(elementSum *: _)
+    yield
+      Monad[[A] =>> StateT[F, Random[F], A]].tailRecM((Map.empty[K, Int], elements.toList.toMap, global)) {
+        case (map, remain, global) =>
+          if remain.isEmpty then map.asRight.pure else
+            for
+              index <- nextIndex(remain.size)
+              key = remain.keys.toVector(index)
+              current = remain(key)
+              nextRemain = remain - key
+              remainSum = nextRemain.values.toList.combineAll
+              len <- betweenInterval(current & (global - remainSum))
+            yield (map + (key -> len), nextRemain, remainSum & (global - len)).asLeft
+      }
+
+  private[charsets] def nextIndex[F[_] : Monad](size: Int): StateT[F, Random[F], Int] =
+    if size == 1 then 0.pure else nextIntBounded(size)
+
+  private[charsets] def betweenInterval[F[_] : Monad](interval: Interval[Int]): StateT[F, Random[F], Int] =
+    val lower = interval.lowerBound match
+      case lowerBound: ValueBound[_] => lowerBound.lower
+      case _ => 0
+    val upper = interval.upperBound match
+      case upperBound: ValueBound[_] => upperBound.upper
+      case _ => Int.MaxValue
+    if upper > lower then between(lower, upper + 1) else lower.pure
+
+  private[charsets] def checkLength(length: Interval[Int], label: String): Either[Error, Interval[Int]] =
+    intervalNonEmpty(length, label).left.map(length *: _)
+
+  private[charsets] def checkBounded(length: Interval[Int]): Either[Error, Interval[Int]] =
+    length.upperBound match
+      case _: ValueBound[_] => length.asRight[Error]
+      case _ => (length *: UnboundError("upperBound")).asLeft[Interval[Int]]
+
 end CharsetsGen
