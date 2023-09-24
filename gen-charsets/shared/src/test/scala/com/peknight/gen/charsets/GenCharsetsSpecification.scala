@@ -1,14 +1,16 @@
 package com.peknight.gen.charsets
 
-import cats.Id
+import cats.syntax.applicative.*
+import cats.syntax.either.*
 import cats.syntax.option.*
-import cats.syntax.traverse.*
+import cats.{Id, Monad}
 import com.peknight.cats.instances.scalacheck.gen.given
 import com.peknight.gen.charsets.CharsetsGen.combineAll
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.spire.ext.syntax.bound.{lower, upper}
 import org.scalacheck.Prop.forAll
+import org.scalacheck.rng.Seed
 import org.scalacheck.{Gen, Properties}
 import spire.math.Interval
 import spire.math.interval.*
@@ -27,7 +29,7 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
   val charsetBelowIntervalGen: Gen[Interval[Int]] =
     for
       close <- booleanGen
-      upper <- Gen.choose(1, 32)
+      upper <- Gen.choose(if close then 1 else 2, 32)
     yield if close then Interval.atOrBelow(upper) else Interval.below(upper)
   val charsetBoundedIntervalGen: Gen[Interval[Int]] =
     for
@@ -44,10 +46,10 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
       if closeLower then Closed(lower) else Open(lower),
       if closeUpper then Closed(upper) else Open(upper)
     )
-  def charsetsRepeatIntervalGen(length: Int): Gen[Interval[Int]] =
+  def charsetsRepeatIntervalGen(lower: Int, length: Int): Gen[Interval[Int]] =
     for
       closeLower <- booleanGen
-      lower <- Gen.choose(-16, if closeLower then length else length - 1)
+      lower <- Gen.choose(lower, if closeLower then length else length - 1)
       closeUpper <- booleanGen
       upperMin =
         if closeUpper && closeLower then 1 max lower
@@ -68,18 +70,22 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     charsetBoundedIntervalGen
   )
 
-  def charsetGen(chars: String): Gen[Charset[Iterable[Char]]] =
-    for
-      repeat <- booleanGen
-      length <- if repeat then charsetIntervalGen else charsetsRepeatIntervalGen(chars.length)
-      startsWith <- booleanGen
-      endsWith <- booleanGen
-    yield Charset(chars, length, repeat, startsWith, endsWith)
-
   val charsetsGen: Gen[List[Charset[Iterable[Char]]]] =
     for
       size <- Gen.choose(1, 4)
-      charsets <- chars.take(size).map(charsetGen).sequence
+      charsets <- Monad[Gen].tailRecM((List.empty[Charset[Iterable[Char]]], chars.take(size), false, false)) {
+        case (acc, Nil, _, _) => acc.reverse.asRight.pure
+        case (acc, head :: tail, start, end) =>
+          for
+            repeat <- booleanGen
+            startsWith <- if tail.isEmpty && !start then Gen.const(true) else booleanGen
+            endsWith <- if tail.isEmpty && !end then Gen.const(true) else booleanGen
+            lower = if tail.nonEmpty || (start && end) then 0 else if start || end then 1 else 2
+            length <- if repeat then charsetIntervalGen else charsetsRepeatIntervalGen(lower, chars.length)
+          yield
+            (Charset(head, length, repeat, startsWith, endsWith) :: acc, tail, start || startsWith, end || endsWith)
+              .asLeft
+      }
     yield charsets
 
   val consecutiveGen: Gen[Consecutive] =
@@ -93,7 +99,7 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     for
       charsets <- charsetsGen
       elementSum = charsets.map { charset =>
-        if charset.repeat then charset.length
+        if charset.repeat then charset.length & Interval.atOrAbove(0)
         else charset.length & Interval.atOrBelow(charset.chars.size)
       }.combineAll
       lowerUpperBound = elementSum.upperBound match
@@ -102,7 +108,7 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
       upperLowerBound = elementSum.lowerBound match
         case lowerBound: ValueBound[_] => lowerBound.lower
         case _ => 1
-      closeLower <- booleanGen
+      closeLower <- if lowerUpperBound == 1 then Gen.const(true) else booleanGen
       lower <- Gen.choose(1, if closeLower then lowerUpperBound else lowerUpperBound - 1)
       closeUpper <- booleanGen
       upperMin =
@@ -112,7 +118,7 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
         else (upperLowerBound + 1) max (lower + 2)
       upper <- Gen.choose(upperMin, upperMin max 128)
       consecutiveOption <- Gen.oneOf(Gen.const(none[Consecutive]), consecutiveGen.map(_.some))
-      retry <- Gen.choose(128, 256)
+      retry <- Gen.const(0)
     yield CharsetsGen(charsets, Interval.fromBounds(
       if closeLower then Closed(lower) else Open(lower),
       if closeUpper then Closed(upper) else Open(upper)
@@ -123,6 +129,18 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
       charsetsGen <- charsetsGenGen
       seed <- Gen.long
     yield (charsetsGen, IdRandom(seed))
+
+
+  def review(seed: String): Unit =
+    val (charsetsGen, random) = charsetsGenSeedGen.pureApply(Gen.Parameters.default, Seed.fromBase64(seed).get)
+    println("================review start================")
+    println(s"charsetsGen=$charsetsGen")
+    println(s"random=$random")
+    println(s"result=${charsetsGen(random)}")
+    println("================review  end ================")
+
+  review("I0e9alocoEI6SHrmUlTt9BoZgShfMIDTXejIEI7SHvF=")
+  review("IKAxFAXehchK_R05HxOF4bL5d46dBauFDDJ_TIhI83E=")
 
   property("should generate a random string") = forAll (charsetsGenSeedGen) { case (charsetsGen, random) =>
     charsetsGen(random) match
