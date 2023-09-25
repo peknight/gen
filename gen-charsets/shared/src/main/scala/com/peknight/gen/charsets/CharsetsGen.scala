@@ -6,6 +6,7 @@ import cats.syntax.either.*
 import cats.syntax.option.*
 import cats.{Foldable, Monad, Monoid}
 import com.peknight.error.spire.math.IntervalEmptyError
+import com.peknight.gen.charsets.CharsetsGen.StartEnd.{Both, Start, End, Neither}
 import com.peknight.error.spire.math.interval.UnboundError
 import com.peknight.error.std.Error
 import com.peknight.gen.charsets.CharsetsGen.*
@@ -30,7 +31,6 @@ case class CharsetsGen[+C <: Iterable[Char]](
                                              // 生成失败重试次数
                                              retry: Int = 3
                                            ):
-
 
   def apply[F[_]: Monad](random: Random[F]): F[Either[Error, String]] =
     StateT.get[F, Random[F]].liftS.flatMap { random => (
@@ -126,8 +126,12 @@ object CharsetsGen:
   end given
 
   extension[G[_] : Foldable] (intervals: G[Interval[Int]])
-    def combineAll: Interval[Int] = Foldable[G].fold(intervals)
+    private[charsets] def combineAll: Interval[Int] = Foldable[G].fold(intervals)
   end extension
+
+  private[charsets] enum StartEnd:
+    case Both, Start, End, Neither
+  end StartEnd
 
   def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
@@ -164,6 +168,13 @@ object CharsetsGen:
       case upperBound: ValueBound[_] => upperBound.upper
       case _ => Int.MaxValue
     if upper > lower then between(lower, upper + 1) else lower.pure
+
+  private[charsets] def resetLengths[C <: Iterable[Char]](lengths: Map[StartEnd, Map[Int, Charset[C]]],
+                                                          global: Interval[Int], started: Boolean)
+  : (Map[StartEnd, Map[Int, Charset[C]]], Interval[Int]) =
+    val end = (global & Interval.atOrAbove(1)).isAt(1)
+    ???
+
 
   private[charsets] def resetLengths(charsets: Map[Int, Charset[Vector[Char]]], length: Int)
   : Map[Int, Charset[Vector[Char]]] =
@@ -253,6 +264,35 @@ object CharsetsGen:
       charset.copy(chars = chars.toVector, length = length)
   }.left.map(charset *: _)
 
+  // TODO
+  private[charsets] def groupByStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]])
+  : Map[StartEnd, Map[Int, Charset[C]]] =
+    charsets.groupBy((_, charset) =>
+      if charset.startsWith && charset.endsWith then Both
+      else if charset.startsWith then Start
+      else if charset.endsWith then End
+      else Neither
+    )
+
+  // TODO
+  private[charsets] def checkStartEnd[C <: Iterable[Char]](charsets: Map[StartEnd, Map[Int, Charset[C]]], global: Interval[Int])
+  : Either[Error, Map[StartEnd, Map[Int, Charset[C]]]] =
+    val bothMap = charsets.getOrElse(Both, Map.empty)
+    if (global & Interval.atOrAbove(1)).isAt(1) then
+      nonEmpty(bothMap, "bothStartEndCharsets").map(_ => charsets)
+    else
+      val onlyStartMap = charsets.getOrElse(Start, Map.empty)
+      val onlyEndMap = charsets.getOrElse(End, Map.empty)
+      if onlyStartMap.isEmpty && onlyEndMap.isEmpty && bothMap.size == 1 then
+        intervalNonEmpty(bothMap.head._2.length & Interval.atOrAbove(2), "bothStartEndCharsets").map(_ => charsets)
+      else if bothMap.isEmpty then
+        for
+          _ <- nonEmpty(onlyStartMap, "startCharsets")
+          _ <- nonEmpty(onlyEndMap, "endCharsets")
+        yield charsets
+      else charsets.asRight
+
+  // TODO
   private[charsets] def checkStartEnd(charsets: Map[Int, Charset[Vector[Char]]])
   : Either[Error, Map[Int, Charset[Vector[Char]]]] =
     val empty: Map[Int, Charset[Vector[Char]]] = Map.empty
@@ -268,6 +308,8 @@ object CharsetsGen:
       endMap <- nonEmpty(endCharsets, "endCharsets")
       tupleOption <- checkOnlyOneStartEndCharset(startMap, endMap)
     yield tupleOption.fold(charsets)(charsets + _)
+
+  // TODO
 
   private[charsets] def checkOnlyOneStartEndCharset(startMap: Map[Int, Charset[Vector[Char]]],
                                                     endMap: Map[Int, Charset[Vector[Char]]])
