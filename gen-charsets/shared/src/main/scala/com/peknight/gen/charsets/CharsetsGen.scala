@@ -5,7 +5,7 @@ import cats.syntax.applicative.*
 import cats.syntax.either.*
 import cats.syntax.eq.*
 import cats.syntax.option.*
-import cats.{Eq, Foldable, Monad, Monoid}
+import cats.{Foldable, Monad, Monoid}
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.UnboundError
 import com.peknight.error.std.Error
@@ -44,12 +44,12 @@ case class CharsetsGen[+C <: Iterable[Char]](
         charsets <- listNonEmpty(charsets, "charsets").liftE
         // 各字符集长度区间检查
         charsets <- traverse(charsets, "charsets")(checkCharset).liftE
-        // 长度区间求和
-        charsetSum = charsets.map(_.length).combineAll
+        // 细化长度区间
+        tuple = calculateLengths(charsets.zipWithIndex.map(_.swap).toList.toMap,
+          length & Interval.atOrAbove(1), false)
         // 求全局区间与和区间交集并检查存在上限
-        global <- checkLength(length & charsetSum & Interval.atOrAbove(1), "global").flatMap(checkBounded)
-          .left.map(charsetSum *: _).liftE
-        charsetMap <- checkStartEnd(charsets.zipWithIndex.map(_.swap).toList.toMap).liftE
+        global <- checkLength(tuple._2, "global").flatMap(checkBounded).liftE
+        charsetMap <- checkStartEnd(tuple._1, global).liftE
         // 生成
         result <- generate(charsetMap, global)
       yield result
@@ -63,7 +63,7 @@ case class CharsetsGen[+C <: Iterable[Char]](
         // 生成字符串长度
         length <- betweenInterval(global).liftS
         // 逐个生成字符
-        res <- generate(resetLengths(charsets, length), length)
+        res <- generate(calculateLengths(charsets, length, false), length)
       yield res
     // 失败重试
     Monad[[A] =>> StateEitherT[F, A]].tailRecM(retry) { retry =>
@@ -73,12 +73,12 @@ case class CharsetsGen[+C <: Iterable[Char]](
 
   private[this] def generate[F[_]: Monad](charsets: Map[Int, Charset[Vector[Char]]], length: Int)
   : StateEitherT[F, String] =
-    Monad[[A] =>> StateEitherT[F, A]].tailRecM(GenAccumulation(List.empty, charsets, length, None)) {
-      case context @ GenAccumulation(chars, charsets, remain, consecutiveAccOption) =>
+    Monad[[A] =>> StateEitherT[F, A]].tailRecM((List.empty[Char], List.empty[Char], charsets, length)) {
+      case context @ (chars, consecutiveChars, charsets, remain) =>
         // 待生成长度为0，生成结束，返回结果
         if remain == 0 then chars.reverse.mkString.asRight.pure else
           // 过滤掉无法出现在下一位的字符、字符集
-          val charMap = filterChars(charsets, consecutiveOption, consecutiveAccOption, chars.isEmpty, remain == 1)
+          val charMap = filterChars(charsets, consecutiveOption, consecutiveChars, chars.isEmpty, remain == 1)
           for
             // 检查字符集不为空
             charMap <- nonEmpty(charMap, "charMap").left.map(context *: _).liftE
@@ -95,17 +95,17 @@ case class CharsetsGen[+C <: Iterable[Char]](
             // 当前生成使用的字符集
             val charset = charsets(key)
             // 细化各字符集长度区间
-            val nextCharsets = resetLengths(
+            val nextCharsets = calculateLengths(
               charsets + (key -> charset.copy(
                 chars = nextChars(ch, charset),
                 length = (charset.length - 1) & Interval.atOrAbove(0)
               )),
-              nextRemain
+              nextRemain,
+              true
             )
             // 中间值更新
-            GenAccumulation(ch :: chars, nextCharsets, nextRemain,
-              nextConsecutiveAccumulation(ch, consecutiveOption, consecutiveAccOption)
-            ).asLeft
+            (ch :: chars, nextConsecutiveChars(ch, consecutiveChars, consecutiveOption), nextCharsets, nextRemain)
+              .asLeft
     }
 
 end CharsetsGen
@@ -176,9 +176,13 @@ object CharsetsGen:
       case _ => Int.MaxValue
     if upper > lower then between(lower, upper + 1) else lower.pure
 
-  private[charsets] def calculateLengths[C <: Iterable[Char]](charsets: Map[StartEnd, Map[Int, Charset[C]]],
+  private[charsets] def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], length: Int,
+                                                              started: Boolean): Map[Int, Charset[C]] =
+    calculateLengths(charsets, Interval.point(length), started)._1
+
+  private[charsets] def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]],
                                                               global: Interval[Int], started: Boolean)
-  : (Map[StartEnd, Map[Int, Charset[C]]], Interval[Int]) =
+  : (Map[Int, Charset[C]], Interval[Int]) =
     @tailrec def go(charsets: Map[StartEnd, Map[Int, Charset[C]]], global: Interval[Int], started: Boolean,
                     tailRecEnd: Boolean) : (Map[StartEnd, Map[Int, Charset[C]]], Interval[Int]) =
       if tailRecEnd then (charsets, global) else
@@ -209,7 +213,7 @@ object CharsetsGen:
                         Interval.atOrAbove(1) - (otherStartEndMap ++ bothMap).combineLengths
                       case Neither => Interval.all
                     val nextLength = charset.length & (global - otherLength) & startEndLength
-                    val nextGlobal = nextLength + otherLength
+                    val nextGlobal = global & (nextLength + otherLength)
                     if nextLength === charset.length then
                       (subCharsets, nextGlobal, subModified)
                     else
@@ -224,8 +228,14 @@ object CharsetsGen:
           if !started && (nextCharsets.get(Both).map(_.combineLengths).combineAll & Interval.atOrAbove(1)).isEmpty then
             nextGlobal & Interval.atOrAbove(2)
           else nextGlobal & Interval.atOrAbove(1)
+        println(s"global=$global")
+        println(s"charsets=$charsets")
+        println(s"nextGlobal=$nextGlobal")
+        println(s"nextCharsets=$nextCharsets")
         go(nextCharsets, nextGlobal, started, !modified && finalGlobal === global)
-    go(charsets, global, started, false)
+    val (startEndCharsets, nextGlobal) = go(groupByStartEnd(charsets), global, started, false)
+    println("======")
+    (startEndCharsets.values.foldLeft(Map.empty[Int, Charset[C]])(_ ++ _), nextGlobal)
 
 
   private[charsets] def resetLengths(charsets: Map[Int, Charset[Vector[Char]]], length: Int)
@@ -236,21 +246,21 @@ object CharsetsGen:
       charsets + (k -> charset.copy(length = charset.length & (global - (lengths - k).values.toList.combineAll)))
     }
 
-  private[charsets] def filterChars(charsets: Map[Int, Charset[Vector[Char]]],
-                                    consecutiveOption: Option[Consecutive],
-                                    consecutiveAccOption: Option[ConsecutiveAccumulation],
-                                    start: Boolean, end: Boolean): Map[Int, Vector[Char]] =
-    val endCharsets = charsets.filter(_._2.endsWith).filter((_, charset) => !(charset.length & Interval.atOrAbove(1)).isEmpty)
-    val filterEndKeyOption = endCharsets.values.map(_.length).toList.combineAll.upperBound match
+  private[charsets] def filterChars(charsets: Map[Int, Charset[Vector[Char]]], consecutiveOption: Option[Consecutive],
+                                    consecutiveChars: List[Char], start: Boolean, end: Boolean): Map[Int, Vector[Char]] =
+    val endCharsets = charsets.filter((_, charset) =>
+      charset.endsWith && (charset.length & Interval.atOrAbove(1)).nonEmpty
+    )
+    val filterEndKeyOption = endCharsets.combineLengths.upperBound match
       case upperBound: ValueBound[_] if upperBound.upper <= 1 => endCharsets.keys.headOption
       case _ => none[Int]
     charsets.filter((k, charset) => !charset.length.isAt(0) &&
         (!start || charset.startsWith) &&
-        (!end || charset.endsWith) && (!filterEndKeyOption.contains(k) || end))
+        (!end || charset.endsWith) &&
+        (!filterEndKeyOption.contains(k) || end))
       .map((k, charset) => (k, consecutiveOption
-        .flatMap(consecutive => consecutiveAccOption
-          .filter(acc => consecutive.max == acc.length)
-          .map(acc => charset.chars.filter(ch => !isConsecutive(ch, consecutive, acc))))
+        .filter(consecutive => consecutive.max == consecutiveChars.length)
+        .map(consecutive => charset.chars.filter(ch => !overConsecutiveLimit(ch, consecutiveChars, consecutive)))
         .getOrElse(charset.chars)
       ))
       .filter((_, chars) => chars.nonEmpty)
@@ -263,39 +273,44 @@ object CharsetsGen:
         else (acc :+ c, false)
       }._1
 
-  private[charsets] def calculateStep(ch: Char, consecutive: Consecutive, consecutiveAcc: ConsecutiveAccumulation)
-  : Option[Int] =
-    if ch.isDigit && consecutiveAcc.current.isDigit then
-      Some(ch - consecutiveAcc.current)
-    else if ch.isLetter && consecutiveAcc.current.isLetter then
-      if consecutive.caseSensitive then Some(ch - consecutiveAcc.current)
-      else Some(ch.toLower - consecutiveAcc.current.toLower)
+  private[charsets] def calculateStep(a: Char, b: Char, caseSensitive: Boolean): Option[Int] =
+    if a.isLetter && b.isLetter && caseSensitive then Some(a.toLower - b.toLower)
+    else if (a.isDigit && b.isDigit) || (a.isLetter && b.isLetter) then Some(a - b)
     else None
 
-  private[charsets] def isConsecutive(ch: Char, consecutive: Consecutive, consecutiveAcc: ConsecutiveAccumulation): Boolean =
-    if ch.isLetterOrDigit then
-      calculateStep(ch, consecutive, consecutiveAcc) match
-        case None => false
-        case Some(step) => consecutiveAcc.step match
-          case Some(accStep) => accStep == step
-          case _ => step.abs <= consecutive.step
-    else false
+  private[charsets] def overConsecutiveLimit(ch: Char, consecutiveChars: List[Char], consecutive: Consecutive): Boolean =
+    consecutiveChars match
+      case _ if consecutiveChars.length < consecutive.max => false
+      case _ if consecutiveChars.length > consecutive.max => true
+      case first :: second :: tail =>
+        calculateStep(first, second, consecutive.caseSensitive)
+          .flatMap(stepAcc => calculateStep(ch, first, consecutive.caseSensitive)
+            .map(step => step == stepAcc))
+          .getOrElse(false)
+      case head :: Nil =>
+        calculateStep(ch, head, consecutive.caseSensitive).exists(step => step.abs <= consecutive.step)
+      case _ => false
 
-  private[charsets] def nextConsecutiveAccumulation(ch: Char, consecutiveOption: Option[Consecutive],
-                                                    consecutiveAccOption: Option[ConsecutiveAccumulation])
-  : Option[ConsecutiveAccumulation] =
+  private[charsets] def nextConsecutiveChars(ch: Char, consecutiveChars: List[Char],
+                                             consecutiveOption: Option[Consecutive]): List[Char] =
     if ch.isLetterOrDigit then
-      (consecutiveOption, consecutiveAccOption) match
-        case (Some(consecutive), Some(consecutiveAcc)) =>
-          (calculateStep(ch, consecutive, consecutiveAcc), consecutiveAcc.step) match
-            case (Some(step), Some(accStep)) if step.abs <= consecutive.step =>
-              if accStep == step then Some(ConsecutiveAccumulation(ch, consecutiveAcc.length + 1, Some(step)))
-              else Some(ConsecutiveAccumulation(ch, 2, Some(step)))
-            case _ => Some(ConsecutiveAccumulation(ch, 1, None))
-        case (Some(_), None) => Some(ConsecutiveAccumulation(ch, 1, None))
-        case (None, _) => None
-    else None
-  end nextConsecutiveAccumulation
+      (consecutiveOption, consecutiveChars) match
+        case (Some(consecutive), first :: second :: tail) =>
+          calculateStep(first, second, consecutive.caseSensitive).fold(List(ch)) { stepAcc =>
+            calculateStep(ch, first, consecutive.caseSensitive).fold(List(ch)) { step =>
+              if step == stepAcc then ch :: consecutiveChars
+              else if step.abs <= consecutive.step then List(ch, first)
+              else List(ch)
+            }
+          }
+        case (Some(consecutive), head :: Nil) =>
+          calculateStep(ch, head, consecutive.caseSensitive).fold(List(ch)) { step =>
+            if step.abs <= consecutive.step then ch :: consecutiveChars
+            else List(ch)
+          }
+        case (Some(_), Nil) => List(ch)
+        case _ => List.empty
+    else List.empty
 
   private[charsets] def checkLength(length: Interval[Int], label: String): Either[Error, Interval[Int]] =
     intervalNonEmpty(length, label).left.map(length *: _)
@@ -316,7 +331,6 @@ object CharsetsGen:
       charset.copy(chars = chars.toVector, length = length)
   }.left.map(charset *: _)
 
-  // TODO
   private[charsets] def groupByStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]])
   : Map[StartEnd, Map[Int, Charset[C]]] =
     charsets.groupBy((_, charset) =>
@@ -326,15 +340,15 @@ object CharsetsGen:
       else Neither
     )
 
-  // TODO
-  private[charsets] def checkStartEnd[C <: Iterable[Char]](charsets: Map[StartEnd, Map[Int, Charset[C]]], global: Interval[Int])
-  : Either[Error, Map[StartEnd, Map[Int, Charset[C]]]] =
-    val bothMap = charsets.getOrElse(Both, Map.empty)
+  private[charsets] def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
+  : Either[Error, Map[Int, Charset[C]]] =
+    val startEndCharsets = groupByStartEnd(charsets)
+    val bothMap = startEndCharsets.getOrElse(Both, Map.empty)
     if (global & Interval.atOrAbove(1)).isAt(1) then
       nonEmpty(bothMap, "bothStartEndCharsets").map(_ => charsets)
     else
-      val onlyStartMap = charsets.getOrElse(Start, Map.empty)
-      val onlyEndMap = charsets.getOrElse(End, Map.empty)
+      val onlyStartMap = startEndCharsets.getOrElse(Start, Map.empty)
+      val onlyEndMap = startEndCharsets.getOrElse(End, Map.empty)
       if onlyStartMap.isEmpty && onlyEndMap.isEmpty && bothMap.size == 1 then
         intervalNonEmpty(bothMap.head._2.length & Interval.atOrAbove(2), "bothStartEndCharsets").map(_ => charsets)
       else if bothMap.isEmpty then
@@ -343,35 +357,6 @@ object CharsetsGen:
           _ <- nonEmpty(onlyEndMap, "endCharsets")
         yield charsets
       else charsets.asRight
-
-  // TODO
-  private[charsets] def checkStartEnd(charsets: Map[Int, Charset[Vector[Char]]])
-  : Either[Error, Map[Int, Charset[Vector[Char]]]] =
-    val empty: Map[Int, Charset[Vector[Char]]] = Map.empty
-    val (startCharsets, endCharsets) = charsets.foldLeft((empty, empty)) {
-      case ((startMap, endMap), (key, charset)) =>
-        if charset.startsWith && charset.endsWith then (startMap + (key -> charset), endMap + (key -> charset))
-        else if charset.startsWith then (startMap + (key -> charset), endMap)
-        else if charset.endsWith then (startMap, endMap + (key -> charset))
-        else (startMap, endMap)
-    }
-    for
-      startMap <- nonEmpty(startCharsets, "startCharsets")
-      endMap <- nonEmpty(endCharsets, "endCharsets")
-      tupleOption <- checkOnlyOneStartEndCharset(startMap, endMap)
-    yield tupleOption.fold(charsets)(charsets + _)
-
-  // TODO
-
-  private[charsets] def checkOnlyOneStartEndCharset(startMap: Map[Int, Charset[Vector[Char]]],
-                                                    endMap: Map[Int, Charset[Vector[Char]]])
-  : Either[Error, Option[(Int, Charset[Vector[Char]])]] =
-    if startMap.size != 1 || endMap.size != 1 then none[(Int, Charset[Vector[Char]])].asRight[Error]
-    else if startMap.head._1 != endMap.head._1 then none[(Int, Charset[Vector[Char]])].asRight[Error]
-    else
-      val (key, charset) = startMap.head
-      intervalNonEmpty(charset.length & Interval.atOrAbove(2), "startEndCharsets")
-        .map(length => (key, charset.copy(length = length)).some)
 
   private[charsets] def checkConsecutive(consecutiveOption: Option[Consecutive]): Either[Error, Option[Consecutive]] =
     consecutiveOption.fold(consecutiveOption.asRight[Error]) { consecutive =>
