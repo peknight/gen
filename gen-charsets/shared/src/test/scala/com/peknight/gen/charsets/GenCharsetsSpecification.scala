@@ -10,6 +10,7 @@ import com.peknight.gen.charsets.CharsetsGen.combineAll
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.spire.ext.syntax.bound.{lower, upper}
+import com.peknight.spire.ext.syntax.interval.close
 import org.scalacheck.rng.Seed
 import org.scalacheck.{Gen, Properties}
 import spire.math.Interval
@@ -102,8 +103,8 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     for
       charsets <- charsetsGen
       elementSum = charsets.map { charset =>
-        if charset.repeat then charset.length & Interval.atOrAbove(0)
-        else charset.length & Interval.atOrBelow(charset.chars.size)
+        if charset.repeat then charset.length.close & Interval.atOrAbove(0)
+        else charset.length.close & Interval.atOrBelow(charset.chars.size)
       }.combineAll
       lowerUpperBound = elementSum.upperBound match
         case upperBound: ValueBound[_] => upperBound.upper
@@ -144,16 +145,14 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     println(s"result=$result")
     println("================ End ================")
 
-  review("I0e9alocoEI6SHrmUlTt9BoZgShfMIDTXejIEI7SHvF=")
-
+  review("vtQn9Etu5xDb4JjEQV-od6p8tWIarP3xvib7oRfvd2L=")
   // import org.scalacheck.Prop.forAll
   // property("should generate a random string") = forAll (charsetsGenSeedGen) { case (charsetsGen, random) =>
   //   charsetsGen(random) match
   //     case Right(_) => true
   //     case result =>
-  //       // log(charsets, random, result)
-  //       // false
-  //       true
+  //       log(charsetsGen, random, result)
+  //       false
   // }
 
 end GenCharsetsSpecification
