@@ -6,7 +6,7 @@ import cats.syntax.option.*
 import cats.{Id, Monad}
 import com.peknight.cats.instances.scalacheck.gen.given
 import com.peknight.error.std.Error
-import com.peknight.gen.charsets.CharsetsGen.combineAll
+import com.peknight.gen.charsets.CharsetsGen.{combineAll, sumLengths}
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.spire.ext.syntax.bound.{lower, upper}
@@ -103,9 +103,11 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     for
       charsets <- charsetsGen
       elementSum = charsets.map { charset =>
-        if charset.repeat then charset.length.close & Interval.atOrAbove(0)
-        else charset.length.close & Interval.atOrBelow(charset.chars.size)
-      }.combineAll
+        val length =
+          if charset.repeat then charset.length.close & Interval.atOrAbove(0)
+          else charset.length.close & Interval.atOrBelow(charset.chars.size)
+        charset.copy(length = length)
+      }.zipWithIndex.map(_.swap).toMap.sumLengths
       lowerUpperBound = elementSum.upperBound match
         case upperBound: ValueBound[_] => upperBound.upper
         case _ => 64
@@ -145,7 +147,7 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     println(s"result=$result")
     println("================ End ================")
 
-  review("vtQn9Etu5xDb4JjEQV-od6p8tWIarP3xvib7oRfvd2L=")
+  review("7QWTgUg9G_uDHzlBvU1uj4wRMGcxl0VKMi2TTdMr6TA=")
   // import org.scalacheck.Prop.forAll
   // property("should generate a random string") = forAll (charsetsGenSeedGen) { case (charsetsGen, random) =>
   //   charsetsGen(random) match

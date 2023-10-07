@@ -134,6 +134,28 @@ object CharsetsGen:
 
   extension[K, C <: Iterable[Char]] (charsets: Map[K, Charset[C]])
     private[charsets] def combineLengths: Interval[Int] = Foldable[List].fold(charsets.values.toList.map(_.length))
+
+    private[charsets] def sumLengths: Interval[Int] =
+      val startEndMap = groupByStartEnd(charsets)
+      val bothLength = startEndMap.getOrElse(Both, Map.empty).combineLengths
+      val onlyStartLength = startEndMap.getOrElse(Start, Map.empty).combineLengths
+      val onlyEndLength = startEndMap.getOrElse(End, Map.empty).combineLengths
+      val neitherLength = startEndMap.getOrElse(Neither, Map.empty).combineLengths
+      (bothLength.lowerBound, onlyStartLength.lowerBound, onlyEndLength.lowerBound) match
+        case (both: ValueBound[Int], _, _) if both.lower >= 1 =>
+          bothLength + onlyStartLength + onlyEndLength + neitherLength
+        case (_, onlyStart: ValueBound[Int], onlyEnd: ValueBound[Int]) if onlyStart.lower >= 1 && onlyEnd.lower >= 1 =>
+          bothLength + onlyStartLength + onlyEndLength + neitherLength
+        case (_, onlyStart: ValueBound[Int], _) if onlyStart.lower >= 1 =>
+          ((bothLength + onlyEndLength) & Interval.atOrAbove(1)) + onlyStartLength + neitherLength
+        case (_, _, onlyEnd: ValueBound[Int]) if onlyEnd.lower >= 1 =>
+          ((bothLength + onlyStartLength) & Interval.atOrAbove(1)) + onlyEndLength + neitherLength
+        case _ if bothLength.isAt(0) =>
+          bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
+        case _ if onlyStartLength.isAt(0) || onlyEndLength.isAt(0) =>
+          (bothLength & Interval.atOrAbove(1)) + onlyStartLength + onlyEndLength + neitherLength
+        case _ =>
+          bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
   end extension
 
   private[charsets] enum StartEnd derives CanEqual:
@@ -186,7 +208,7 @@ object CharsetsGen:
     @tailrec def go(charsets: Map[StartEnd, Map[Int, Charset[C]]], global: Interval[Int], started: Boolean,
                     tailRecEnd: Boolean) : (Map[StartEnd, Map[Int, Charset[C]]], Interval[Int]) =
       if tailRecEnd then (charsets, global) else
-        println(s"$global,charsets=$charsets")
+        // println(s"$global,charsets=$charsets")
         val (nextCharsets, nextGlobal, modified) =
           charsets.foldLeft((charsets, global, false)) {
             case ((charsets, global, charsetsModified), (startEnd, subCharsets)) =>
@@ -234,7 +256,6 @@ object CharsetsGen:
         go(nextCharsets, finalGlobal, started, !modified && finalGlobal === global)
     val (startEndCharsets, nextGlobal) = go(groupByStartEnd(charsets), global, started, false)
     (startEndCharsets.values.foldLeft(Map.empty[Int, Charset[C]])(_ ++ _), nextGlobal)
-
 
   private[charsets] def resetLengths(charsets: Map[Int, Charset[Vector[Char]]], length: Int)
   : Map[Int, Charset[Vector[Char]]] =
@@ -331,8 +352,8 @@ object CharsetsGen:
       charset.copy(chars = chars.toVector, length = length.close)
   }.left.map(charset *: _)
 
-  private[charsets] def groupByStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]])
-  : Map[StartEnd, Map[Int, Charset[C]]] =
+  private[charsets] def groupByStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]])
+  : Map[StartEnd, Map[K, Charset[C]]] =
     charsets.groupBy((_, charset) =>
       if charset.startsWith && charset.endsWith then Both
       else if charset.startsWith then Start
