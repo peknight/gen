@@ -64,7 +64,7 @@ object CharsetsGen:
     charsetBoundedIntervalGen
   )
 
-  private[this] def charsetRepeatIntervalGen[F[_]: Monad](lowerLowerBound: Int, lowerUpperBound: Int)
+  private[this] def charsetBoundedIntervalGen[F[_]: Monad](lowerLowerBound: Int, lowerUpperBound: Int)
   : GenT[F, Interval[Int]] =
     for
       closeLower <- nextBoolean[F]
@@ -97,8 +97,14 @@ object CharsetsGen:
             repeat <- nextBoolean[F]
             startsWith <- if tail.isEmpty && !start then pure[F, Random[F], Boolean](true) else nextBoolean[F]
             endsWith <- if tail.isEmpty && !end then pure[F, Random[F], Boolean](true) else nextBoolean[F]
-            lowerLowerBound = if tail.nonEmpty || (start && end) then 0 else if start || end then 1 else 2
-            length <- if repeat then charsetIntervalGen else charsetRepeatIntervalGen(lowerLowerBound, chars.length)
+            lowerLowerBound =
+              if startsWith && endsWith then 2
+              else if tail.nonEmpty || (start && end) then 0
+              else if start || end then 1
+              else 2
+            length <-
+              if repeat && lowerLowerBound == 0 then charsetIntervalGen
+              else charsetBoundedIntervalGen(lowerLowerBound, chars.length)
           yield
             (Charset(head, length, repeat, startsWith, endsWith) :: acc, tail, start || startsWith, end || endsWith)
               .asLeft
@@ -109,7 +115,7 @@ object CharsetsGen:
   private[this] def consecutiveGen[F[_]: Monad]: GenT[F, Consecutive] =
     (GenT.choose[F, Int](1, 9), GenT.choose[F, Int](0, 4), nextBoolean[F]).mapN(Consecutive.apply)
 
-  def charsetsGen[F[_]: Monad]: GenT[F, Charsets[Iterable[Char]]] =
+  def apply[F[_]: Monad]: GenT[F, Charsets[Iterable[Char]]] =
     for
       charsets <- charsetListGen
       elementLength = combineStartEnd(charsets.map { charset =>
@@ -134,7 +140,7 @@ object CharsetsGen:
         else (upperLowerBound + 1) max (lower + 2)
       upper <- GenT.choose(upperMin, (upperMin max 128) + 1)
       consecutiveOption <- GenT.oneOf(pure(none[Consecutive]), consecutiveGen.map(_.some))
-      retry <- pure(0)
+      retry <- pure(128)
     yield Charsets(charsets, Interval.fromBounds(
       if closeLower then Closed(lower) else Open(lower),
       if closeUpper then Closed(upper) else Open(upper)

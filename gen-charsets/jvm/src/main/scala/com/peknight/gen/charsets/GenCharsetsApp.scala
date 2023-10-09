@@ -15,4 +15,13 @@ object GenCharsetsApp extends App:
     Interval.point(16),
     Some(Consecutive(3,3))
   ))(IdRandom(System.currentTimeMillis())))
+  println(GenCharsets.allocate[Id, Int](
+    Interval.closed(30, 40),
+    Map(
+      1 -> Interval.above(10),
+      2 -> Interval.below(10),
+      3 -> Interval.closed(8, 10),
+      4 -> Interval.all[Int]
+    )
+  ).map(_.runA(IdRandom(System.currentTimeMillis()))))
 end GenCharsetsApp

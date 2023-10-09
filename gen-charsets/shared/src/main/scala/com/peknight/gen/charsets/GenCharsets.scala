@@ -4,11 +4,11 @@ import cats.data.{EitherT, StateT}
 import cats.syntax.applicative.*
 import cats.syntax.either.*
 import cats.syntax.eq.*
-import com.peknight.gen.GenT
 import cats.{Foldable, Monad, Monoid}
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.UnboundError
 import com.peknight.error.std.Error
+import com.peknight.gen.GenT
 import com.peknight.gen.charsets.GenCharsets.StartEnd.{Both, End, Neither, Start}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
@@ -26,6 +26,9 @@ import scala.annotation.tailrec
 
 object GenCharsets:
 
+  private[charsets] enum StartEnd derives CanEqual:
+    case Both, Start, End, Neither
+  end StartEnd
 
   private[charsets] type StateEitherT[F[_], A] = EitherT[[S] =>> StateT[F, Random[F], S], Error, A]
 
@@ -49,7 +52,7 @@ object GenCharsets:
   def generate[F[_]: Monad, C <: Iterable[Char]](charsets: Charsets[C]): GenT[F, Either[Error, String]] =
     StateT.get[F, Random[F]].liftS.flatMap { random => {
       for
-      // 参数检查
+        // 参数检查
         consecutiveOption <- checkConsecutive(charsets.consecutiveOption).liftE
         retry <- nonNegative(charsets.retry, "retry").liftE
         cs <- listNonEmpty(charsets.charsets, "charsets").liftE
@@ -119,38 +122,6 @@ object GenCharsets:
               .asLeft
     }
 
-  private[charsets] def combineAll[G[_]: Foldable](intervals: G[Interval[Int]]): Interval[Int] =
-    Foldable[G].fold(intervals)
-
-  private[charsets] def combineAll[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
-    Foldable[List].fold(charsets.values.toList.map(_.length))
-
-  private[charsets] enum StartEnd derives CanEqual:
-    case Both, Start, End, Neither
-  end StartEnd
-
-  private[charsets] def combineStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
-    val startEndMap = groupByStartEnd(charsets)
-    val bothLength = combineAll(startEndMap.getOrElse(Both, Map.empty)) & Interval.atOrAbove(0)
-    val onlyStartLength = combineAll(startEndMap.getOrElse(Start, Map.empty)) & Interval.atOrAbove(0)
-    val onlyEndLength = combineAll(startEndMap.getOrElse(End, Map.empty)) & Interval.atOrAbove(0)
-    val neitherLength = combineAll(startEndMap.getOrElse(Neither, Map.empty)) & Interval.atOrAbove(0)
-    (bothLength.lowerBound, onlyStartLength.lowerBound, onlyEndLength.lowerBound) match
-      case (both: ValueBound[Int], _, _) if both.lower >= 1 =>
-        bothLength + onlyStartLength + onlyEndLength + neitherLength
-      case (_, onlyStart: ValueBound[Int], onlyEnd: ValueBound[Int]) if onlyStart.lower >= 1 && onlyEnd.lower >= 1 =>
-        bothLength + onlyStartLength + onlyEndLength + neitherLength
-      case (_, onlyStart: ValueBound[Int], _) if onlyStart.lower >= 1 =>
-        ((bothLength + onlyEndLength) & Interval.atOrAbove(1)) + onlyStartLength + neitherLength
-      case (_, _, onlyEnd: ValueBound[Int]) if onlyEnd.lower >= 1 =>
-        ((bothLength + onlyStartLength) & Interval.atOrAbove(1)) + onlyEndLength + neitherLength
-      case _ if bothLength.isAt(0) =>
-        bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
-      case _ if onlyStartLength.isAt(0) || onlyEndLength.isAt(0) =>
-        (bothLength & Interval.atOrAbove(1)) + onlyStartLength + onlyEndLength + neitherLength
-      case _ =>
-        bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
-
   def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
@@ -170,8 +141,8 @@ object GenCharsets:
               key = remain.keys.toVector(index)
               current = remain(key)
               nextRemain = remain - key
-              remainSum = combineAll(nextRemain.values.toList)
-              len <- betweenInterval(current & (global - remainSum))
+              remainSum = combineAll(nextRemain.values.map(_ & Interval.atOrAbove(0)).toList)
+              len <- betweenInterval(current & (global - remainSum) & Interval.atOrAbove(0))
             yield (map + (key -> len), nextRemain, remainSum & (global - len)).asLeft
       }
 
@@ -312,6 +283,44 @@ object GenCharsets:
         case _ => List.empty
     else List.empty
 
+  private[charsets] def groupByStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]])
+  : Map[StartEnd, Map[K, Charset[C]]] =
+    charsets.groupBy((_, charset) =>
+      if charset.startsWith && charset.endsWith then Both
+      else if charset.startsWith then Start
+      else if charset.endsWith then End
+      else Neither
+    )
+
+  private[charsets] def combineAll[G[_] : Foldable](intervals: G[Interval[Int]]): Interval[Int] =
+    Foldable[G].fold(intervals)
+
+  private[charsets] def combineAll[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
+    
+  Foldable[List].fold(charsets.values.toList.map(_.length))
+
+  private[charsets] def combineStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
+    val startEndMap = groupByStartEnd(charsets)
+    val bothLength = combineAll(startEndMap.getOrElse(Both, Map.empty)) & Interval.atOrAbove(0)
+    val onlyStartLength = combineAll(startEndMap.getOrElse(Start, Map.empty)) & Interval.atOrAbove(0)
+    val onlyEndLength = combineAll(startEndMap.getOrElse(End, Map.empty)) & Interval.atOrAbove(0)
+    val neitherLength = combineAll(startEndMap.getOrElse(Neither, Map.empty)) & Interval.atOrAbove(0)
+    (bothLength.lowerBound, onlyStartLength.lowerBound, onlyEndLength.lowerBound) match
+      case (both: ValueBound[Int], _, _) if both.lower >= 1 =>
+        bothLength + onlyStartLength + onlyEndLength + neitherLength
+      case (_, onlyStart: ValueBound[Int], onlyEnd: ValueBound[Int]) if onlyStart.lower >= 1 && onlyEnd.lower >= 1 =>
+        bothLength + onlyStartLength + onlyEndLength + neitherLength
+      case (_, onlyStart: ValueBound[Int], _) if onlyStart.lower >= 1 =>
+        ((bothLength + onlyEndLength) & Interval.atOrAbove(1)) + onlyStartLength + neitherLength
+      case (_, _, onlyEnd: ValueBound[Int]) if onlyEnd.lower >= 1 =>
+        ((bothLength + onlyStartLength) & Interval.atOrAbove(1)) + onlyEndLength + neitherLength
+      case _ if bothLength.isAt(0) =>
+        bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
+      case _ if onlyStartLength.isAt(0) || onlyEndLength.isAt(0) =>
+        (bothLength & Interval.atOrAbove(1)) + onlyStartLength + onlyEndLength + neitherLength
+      case _ =>
+        bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
+
   private[charsets] def checkLength(length: Interval[Int], label: String): Either[Error, Interval[Int]] =
     intervalNonEmpty(length, label).left.map(length *: _)
 
@@ -330,15 +339,6 @@ object GenCharsets:
     yield
       charset.copy(chars = chars.toVector, length = length.close)
   }.left.map(charset *: _)
-
-  private[charsets] def groupByStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]])
-  : Map[StartEnd, Map[K, Charset[C]]] =
-    charsets.groupBy((_, charset) =>
-      if charset.startsWith && charset.endsWith then Both
-      else if charset.startsWith then Start
-      else if charset.endsWith then End
-      else Neither
-    )
 
   private[charsets] def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
   : Either[Error, Map[Int, Charset[C]]] =

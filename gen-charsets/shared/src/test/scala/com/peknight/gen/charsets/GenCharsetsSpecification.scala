@@ -9,11 +9,11 @@ import com.peknight.random.id.Random as IdRandom
 import org.scalacheck.rng.Seed
 import org.scalacheck.{Gen, Properties}
 
-class GenCharsetsSpecification extends Properties("CharsetsGen"):
+class GenCharsetsSpecification extends Properties("GenCharsets"):
 
   val charsetsRandomsGen: Gen[(Charsets[Iterable[Char]], List[Random[Id]])] =
     for
-      charsets <- Gen.long.map(seed => CharsetsGen.charsetsGen[Id].runA(IdRandom(seed)))
+      charsets <- Gen.long.map(seed => CharsetsGen[Id].runA(IdRandom(seed)))
       randoms <- List.fill(100)(Gen.long).traverse(_.map(IdRandom.apply))
     yield (charsets, randoms)
 
@@ -34,15 +34,23 @@ class GenCharsetsSpecification extends Properties("CharsetsGen"):
     println(s"result=$result")
     println("================ End ================")
 
-  review("4Ield9xMDlqSvTfnSiCjApMvXm-u0m9jxUG6vkfHapH=")
-  // import org.scalacheck.Prop.forAll
-  // property("should generate a random string") = forAll (charsetsRandomsGen) { case (charsets, randoms) =>
-  //   randoms.forall { random =>
-  //     GenCharsets[Id, Iterable[Char]](charsets)(random) match
-  //       case Right(_) => true
-  //       case result =>
-  //         log(charsets, random, result)
-  //         false
-  //   }
-  // }
+  // review("fYmGEbGxtRr0ZT2lPepozxNmcLFnKcm_6nH956CeE3N=")
+  import org.scalacheck.Prop.forAll
+  property("should generate a random string") = forAll (charsetsRandomsGen) { case (charsets, randoms) =>
+    randoms.forall { random =>
+      GenCharsets[Id, Iterable[Char]](charsets)(random) match
+        case Right(_) => true
+        case result =>
+          log(charsets, random, result)
+          false
+    }
+  }
+
+  property("should generate a sized string") = forAll(charsetsRandomsGen) { case (charsets, randoms) =>
+    randoms.forall { random =>
+      GenCharsets[Id, Iterable[Char]](charsets)(random) match
+        case Right(str) => charsets.length.contains(str.length)
+        case _ => true
+    }
+  }
 end GenCharsetsSpecification
