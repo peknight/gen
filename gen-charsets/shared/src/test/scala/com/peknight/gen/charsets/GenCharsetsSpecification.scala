@@ -20,7 +20,7 @@ class GenCharsetsSpecification extends Properties("GenCharsets"):
   def review(seed: String): Unit =
     val (charsets, randoms) = charsetsRandomsGen.pureApply(Gen.Parameters.default, Seed.fromBase64(seed).get)
     randoms.foreach { random =>
-      GenCharsets[Id, Iterable[Char]](charsets)(random) match
+      charsets(random) match
         case Right(_) => ()
         case result =>
           log(charsets, random, result)
@@ -38,7 +38,7 @@ class GenCharsetsSpecification extends Properties("GenCharsets"):
   import org.scalacheck.Prop.forAll
   property("should generate a random string") = forAll (charsetsRandomsGen) { case (charsets, randoms) =>
     randoms.forall { random =>
-      GenCharsets[Id, Iterable[Char]](charsets)(random) match
+      charsets(random) match
         case Right(_) => true
         case result =>
           log(charsets, random, result)
@@ -48,7 +48,7 @@ class GenCharsetsSpecification extends Properties("GenCharsets"):
 
   property("should generate a sized string") = forAll(charsetsRandomsGen) { case (charsets, randoms) =>
     randoms.forall { random =>
-      GenCharsets[Id, Iterable[Char]](charsets)(random) match
+      charsets(random) match
         case Right(str) => charsets.length.contains(str.length)
         case _ => true
     }

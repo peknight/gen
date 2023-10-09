@@ -4,7 +4,7 @@ import cats.data.StateT.pure
 import cats.syntax.option.*
 import cats.syntax.apply.*
 import cats.syntax.either.*
-import com.peknight.gen.charsets.GenCharsets.combineStartEnd
+import com.peknight.gen.charsets.CharsetsOps.combineStartEnd
 import cats.{Applicative, Monad}
 import com.peknight.spire.ext.syntax.interval.close
 import com.peknight.spire.ext.syntax.bound.{upper, lower}
