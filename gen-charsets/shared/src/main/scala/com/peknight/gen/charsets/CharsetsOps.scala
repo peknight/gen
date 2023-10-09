@@ -23,7 +23,7 @@ import spire.std.int.IntAlgebra
 
 import scala.annotation.tailrec
 
-object CharsetsOps:
+private[charsets] object CharsetsOps:
 
   private[charsets] enum StartEnd derives CanEqual:
     case Both, Start, End, Neither
