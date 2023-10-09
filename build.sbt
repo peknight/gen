@@ -37,6 +37,7 @@ lazy val genCore = (crossProject(JSPlatform, JVMPlatform) in file("gen-core"))
   )
 
 lazy val genCharsets = (crossProject(JSPlatform, JVMPlatform) in file("gen-charsets"))
+  .dependsOn(genCore)
   .settings(commonSettings)
   .settings(
     name := "gen-charsets",
