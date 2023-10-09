@@ -5,6 +5,7 @@ import com.peknight.random.id.Random as IdRandom
 import spire.math.Interval
 
 object GenCharsetsApp extends App:
+
   println(Charsets(
     List(
       Charset((0 to 9).mkString, Interval.atOrAbove(3)),
@@ -15,6 +16,7 @@ object GenCharsetsApp extends App:
     Interval.point(16),
     Some(Consecutive(3,3))
   )(IdRandom(System.currentTimeMillis())))
+
   println(CharsetsOps.allocate[Id, Int](
     Interval.closed(30, 40),
     Map(
