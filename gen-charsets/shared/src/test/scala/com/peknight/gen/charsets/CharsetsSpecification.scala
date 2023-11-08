@@ -4,7 +4,7 @@ import cats.Id
 import cats.syntax.either.*
 import cats.syntax.traverse.*
 import com.peknight.cats.instances.scalacheck.gen.given
-import com.peknight.error.std.Error
+import com.peknight.error.Error
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import org.scalacheck.Prop.forAll

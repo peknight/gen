@@ -2,7 +2,7 @@ package com.peknight.gen.charsets
 
 import cats.Monad
 import com.peknight.random.Random
-import com.peknight.error.std.Error
+import com.peknight.error.Error
 import spire.math.Interval
 
 case class Charsets[C <: Iterable[Char]](

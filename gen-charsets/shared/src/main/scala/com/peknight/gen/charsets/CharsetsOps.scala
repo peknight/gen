@@ -5,9 +5,10 @@ import cats.syntax.applicative.*
 import cats.syntax.either.*
 import cats.syntax.eq.*
 import cats.{Foldable, Monad, Monoid}
-import com.peknight.error.spire.math.IntervalEmptyError
-import com.peknight.error.spire.math.interval.UnboundError
-import com.peknight.error.std.Error
+import com.peknight.error.Error
+import com.peknight.error.spire.math.IntervalEmpty
+import com.peknight.error.spire.math.interval.Unbound
+import com.peknight.error.syntax.either.label
 import com.peknight.gen.charsets.CharsetsOps.StartEnd.{Both, End, Neither, Start}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
@@ -53,7 +54,7 @@ private[charsets] object CharsetsOps:
         retry <- nonNegative(charsets.retry, "retry").liftE
         cs <- listNonEmpty(charsets.charsets, "charsets").liftE
         // 各字符集长度区间检查
-        cs <- traverse(cs, "charsets")(checkCharset).liftE
+        cs <- traverse(cs)(checkCharset).label("charsets").liftE
         // 细化长度区间
         tuple = calculateLengths(cs.zipWithIndex.map(_.swap).toList.toMap,
           charsets.length.close & Interval.atOrAbove(1), false)
@@ -122,9 +123,9 @@ private[charsets] object CharsetsOps:
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
       elements <- listNonEmpty(elements.toList, "elements")
-      elements <- traverse(elements, "elements") {
+      elements <- traverse(elements) {
         case (k, length) => checkLength(length, "length").map((k, _)).left.map(k *: _)
-      }
+      }.label("elements")
       elementSum = combineAll(elements.map(_._2))
       global <- checkLength(global & elementSum & Interval.atOrAbove(1), "global").flatMap(checkBounded)
         .left.map(elementSum *: _)
@@ -321,7 +322,7 @@ private[charsets] object CharsetsOps:
   private[this] def checkBounded(length: Interval[Int]): Either[Error, Interval[Int]] =
     length.upperBound match
       case _: ValueBound[_] => length.asRight[Error]
-      case _ => (length *: UnboundError("upperBound")).asLeft[Interval[Int]]
+      case _ => (length *: Unbound("upperBound")).asLeft[Interval[Int]]
 
   private[this] def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
     for
@@ -329,7 +330,7 @@ private[charsets] object CharsetsOps:
       length <-
         if charset.repeat then checkLength(charset.length & Interval.atOrAbove(0), "length")
         else checkLength(charset.length & Interval.closed(0, chars.size), "length")
-      length <- if length.isAt(0) then IntervalEmptyError("length").asLeft[Interval[Int]] else length.asRight[Error]
+      length <- if length.isAt(0) then IntervalEmpty("length").asLeft[Interval[Int]] else length.asRight[Error]
     yield
       charset.copy(chars = chars.toVector, length = length.close)
   }.left.map(charset *: _)
