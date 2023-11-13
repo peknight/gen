@@ -6,9 +6,8 @@ import cats.syntax.either.*
 import cats.syntax.eq.*
 import cats.{Foldable, Monad, Monoid}
 import com.peknight.error.Error
-import com.peknight.error.spire.math.IntervalEmpty
-import com.peknight.error.spire.math.interval.Unbound
-import com.peknight.error.syntax.either.label
+import com.peknight.error.spire.math.interval.IntervalEmpty
+import com.peknight.error.syntax.either.{label, prepended}
 import com.peknight.gen.charsets.CharsetsOps.StartEnd.{Both, End, Neither, Start}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
@@ -16,7 +15,7 @@ import com.peknight.spire.ext.syntax.bound.{lower, upper}
 import com.peknight.spire.ext.syntax.interval.close
 import com.peknight.validation.collection.iterableOnce.either.nonEmpty
 import com.peknight.validation.collection.list.either.nonEmpty as listNonEmpty
-import com.peknight.validation.spire.math.interval.either.{nonNegative, positive, nonEmpty as intervalNonEmpty}
+import com.peknight.validation.spire.math.interval.either.{nonNegative, positive, upperValueBounded, nonEmpty as intervalNonEmpty}
 import com.peknight.validation.traverse.either.traverse
 import spire.math.Interval
 import spire.math.interval.*
@@ -51,15 +50,15 @@ private[charsets] object CharsetsOps:
       for
         // 参数检查
         consecutiveOption <- checkConsecutive(charsets.consecutiveOption).liftE
-        retry <- nonNegative(charsets.retry, "retry").liftE
-        cs <- listNonEmpty(charsets.charsets, "charsets").liftE
+        retry <- nonNegative(charsets.retry).label("retry").liftE
+        cs <- listNonEmpty(charsets.charsets).label("charsets").liftE
         // 各字符集长度区间检查
         cs <- traverse(cs)(checkCharset).label("charsets").liftE
         // 细化长度区间
         tuple = calculateLengths(cs.zipWithIndex.map(_.swap).toList.toMap,
           charsets.length.close & Interval.atOrAbove(1), false)
         // 求全局区间与和区间交集并检查存在上限
-        global <- checkLength(tuple._2, "global").flatMap(checkBounded).liftE
+        global <- intervalNonEmpty(tuple._2).flatMap(upperValueBounded).label("global").liftE
         cs <- checkStartEnd(tuple._1, global).liftE
         // 生成
         result <- generate(cs, global, consecutiveOption, retry)
@@ -92,7 +91,7 @@ private[charsets] object CharsetsOps:
           val charMap = filterChars(charsets, remain, consecutiveOption, consecutiveChars, chars.isEmpty, remain == 1)
           for
           // 检查字符集不为空
-            charMap <- nonEmpty(charMap, "charMap").left.map(context *: _).liftE
+            charMap <- nonEmpty(charMap).label("charMap").prepended(context).liftE
             // 随机取字符集
             index <- nextIndex(charMap.size).liftS
             key = charMap.keys.toVector(index)
@@ -122,13 +121,13 @@ private[charsets] object CharsetsOps:
   def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
-      elements <- listNonEmpty(elements.toList, "elements")
+      elements <- listNonEmpty(elements.toList).label("elements")
       elements <- traverse(elements) {
-        case (k, length) => checkLength(length, "length").map((k, _)).left.map(k *: _)
+        case (k, length) => intervalNonEmpty(length).label("length").map((k, _)).prepended(k)
       }.label("elements")
       elementSum = combineAll(elements.map(_._2))
-      global <- checkLength(global & elementSum & Interval.atOrAbove(1), "global").flatMap(checkBounded)
-        .left.map(elementSum *: _)
+      global <- intervalNonEmpty(global & elementSum & Interval.atOrAbove(1)).flatMap(upperValueBounded)
+        .label("global").prepended(elementSum)
     yield
       Monad[[A] =>> StateT[F, Random[F], A]].tailRecM((Map.empty[K, Int], elements.toList.toMap, global)) {
         case (map, remain, global) =>
@@ -316,48 +315,43 @@ private[charsets] object CharsetsOps:
       case _ =>
         bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
 
-  private[this] def checkLength(length: Interval[Int], label: String): Either[Error, Interval[Int]] =
-    intervalNonEmpty(length, label).left.map(length *: _)
-
-  private[this] def checkBounded(length: Interval[Int]): Either[Error, Interval[Int]] =
-    length.upperBound match
-      case _: ValueBound[_] => length.asRight[Error]
-      case _ => (length *: Unbound("upperBound")).asLeft[Interval[Int]]
-
   private[this] def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
     for
-      chars <- nonEmpty(charset.chars, "chars")
+      chars <- nonEmpty(charset.chars).label("chars")
       length <-
-        if charset.repeat then checkLength(charset.length & Interval.atOrAbove(0), "length")
-        else checkLength(charset.length & Interval.closed(0, chars.size), "length")
-      length <- if length.isAt(0) then IntervalEmpty("length").asLeft[Interval[Int]] else length.asRight[Error]
+        if charset.repeat then intervalNonEmpty(charset.length & Interval.atOrAbove(0)).label("length")
+        else intervalNonEmpty(charset.length & Interval.closed(0, chars.size)).label("length")
+      length <-
+        if length.isAt(0) then IntervalEmpty.label("length").asLeft[Interval[Int]]
+        else length.asRight[Error]
     yield
       charset.copy(chars = chars.toVector, length = length.close)
-  }.left.map(charset *: _)
+  }.prepended(charset)
 
   private[this] def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
   : Either[Error, Map[Int, Charset[C]]] =
     val startEndCharsets = groupByStartEnd(charsets)
     val bothMap = startEndCharsets.getOrElse(Both, Map.empty)
     if (global & Interval.atOrAbove(1)).isAt(1) then
-      nonEmpty(bothMap, "bothStartEndCharsets").map(_ => charsets)
+      nonEmpty(bothMap).label("bothStartEndCharsets").map(_ => charsets)
     else
       val onlyStartMap = startEndCharsets.getOrElse(Start, Map.empty)
       val onlyEndMap = startEndCharsets.getOrElse(End, Map.empty)
       if onlyStartMap.isEmpty && onlyEndMap.isEmpty && bothMap.size == 1 then
-        intervalNonEmpty(bothMap.head._2.length & Interval.atOrAbove(2), "bothStartEndCharsets").map(_ => charsets)
+        intervalNonEmpty(bothMap.head._2.length & Interval.atOrAbove(2)).label("bothStartEndCharsets")
+          .map(_ => charsets)
       else if bothMap.isEmpty then
         for
-          _ <- nonEmpty(onlyStartMap, "startCharsets")
-          _ <- nonEmpty(onlyEndMap, "endCharsets")
+          _ <- nonEmpty(onlyStartMap).label("startCharsets")
+          _ <- nonEmpty(onlyEndMap).label("endCharsets")
         yield charsets
       else charsets.asRight
 
   private[this] def checkConsecutive(consecutiveOption: Option[Consecutive]): Either[Error, Option[Consecutive]] =
-    consecutiveOption.fold(consecutiveOption.asRight[Error]) { consecutive =>
+    traverse(consecutiveOption) { consecutive =>
       for
-        _ <- positive(consecutive.max, "max")
-        _ <- nonNegative(consecutive.step, "step")
-      yield consecutiveOption
+        _ <- positive(consecutive.max).label("max")
+        _ <- nonNegative(consecutive.step).label("step")
+      yield consecutive
     }
 end CharsetsOps

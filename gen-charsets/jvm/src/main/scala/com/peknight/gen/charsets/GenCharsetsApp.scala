@@ -13,7 +13,7 @@ object GenCharsetsApp extends App:
       Charset(('A' to 'Z').mkString, Interval.atOrAbove(3)),
       Charset("~!_@.#*$^&", Interval.atOrAbove(3))
     ),
-    Interval.point(16),
+    Interval.point(6),
     Some(Consecutive(3,3))
   )(IdRandom(System.currentTimeMillis())))
 
