@@ -29,15 +29,15 @@ private[charsets] object CharsetsOps:
     case Both, Start, End, Neither
   end StartEnd
 
-  private[this] type StateEitherT[F[_], A] = EitherT[[S] =>> StateT[F, Random[F], S], Error, A]
+  private type StateEitherT[F[_], A] = EitherT[[S] =>> StateT[F, Random[F], S], Error, A]
 
   extension [A] (either: Either[Error, A])
-    private[this] def liftE[F[_] : Monad]: StateEitherT[F, A] =
+    private def liftE[F[_] : Monad]: StateEitherT[F, A] =
       EitherT(either.pure[[S] =>> StateT[F, Random[F], S]])
   end extension
 
   extension [F[_]: Monad, A] (state: StateT[F, Random[F], A])
-    private[this] def liftS: StateEitherT[F, A] = EitherT(state.map(_.asRight[Error]))
+    private def liftS: StateEitherT[F, A] = EitherT(state.map(_.asRight[Error]))
   end extension
 
   given Monoid[Interval[Int]] with
@@ -65,8 +65,8 @@ private[charsets] object CharsetsOps:
       yield result
     }.leftMap(random *: _) }.value
 
-  private[this] def generate[F[_] : Monad](charsets: Map[Int, Charset[Vector[Char]]], global: Interval[Int],
-                                           consecutiveOption: Option[Consecutive], retry: Int): StateEitherT[F, String] =
+  private def generate[F[_] : Monad](charsets: Map[Int, Charset[Vector[Char]]], global: Interval[Int],
+                                     consecutiveOption: Option[Consecutive], retry: Int): StateEitherT[F, String] =
     // 全局区间上限
     val result =
       for
@@ -81,8 +81,8 @@ private[charsets] object CharsetsOps:
       else EitherT(result.fold(_ => (retry - 1).asLeft[String].asRight[Error], _.asRight[Int].asRight[Error]))
     }
 
-  private[this] def generate[F[_] : Monad](charsets: Map[Int, Charset[Vector[Char]]], length: Int,
-                                           consecutiveOption: Option[Consecutive]): StateEitherT[F, String] =
+  private def generate[F[_] : Monad](charsets: Map[Int, Charset[Vector[Char]]], length: Int,
+                                     consecutiveOption: Option[Consecutive]): StateEitherT[F, String] =
     Monad[[A] =>> StateEitherT[F, A]].tailRecM((List.empty[Char], List.empty[Char], charsets, length)) {
       case context @ (chars, consecutiveChars, charsets, remain) =>
         // 待生成长度为0，生成结束，返回结果
@@ -142,10 +142,10 @@ private[charsets] object CharsetsOps:
             yield (map + (key -> len), nextRemain, remainSum & (global - len)).asLeft
       }
 
-  private[this] def nextIndex[F[_] : Monad](size: Int): StateT[F, Random[F], Int] =
+  private def nextIndex[F[_] : Monad](size: Int): StateT[F, Random[F], Int] =
     if size == 1 then 0.pure else nextIntBounded(size)
 
-  private[this] def betweenInterval[F[_] : Monad](interval: Interval[Int]): StateT[F, Random[F], Int] =
+  private def betweenInterval[F[_] : Monad](interval: Interval[Int]): StateT[F, Random[F], Int] =
     val lower = interval.lowerBound match
       case lowerBound: ValueBound[_] => lowerBound.lower
       case _ => 0
@@ -154,12 +154,12 @@ private[charsets] object CharsetsOps:
       case _ => Int.MaxValue
     if upper > lower then between(lower, upper + 1) else lower.pure
 
-  private[this] def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], length: Int, started: Boolean)
+  private def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], length: Int, started: Boolean)
   : Map[Int, Charset[C]] =
     calculateLengths(charsets, Interval.point(length), started)._1
 
-  private[this] def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int],
-                                                          started: Boolean): (Map[Int, Charset[C]], Interval[Int]) =
+  private def calculateLengths[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int],
+                                                    started: Boolean): (Map[Int, Charset[C]], Interval[Int]) =
     @tailrec def go(charsets: Map[StartEnd, Map[Int, Charset[C]]], global: Interval[Int], started: Boolean,
                     tailRecEnd: Boolean) : (Map[StartEnd, Map[Int, Charset[C]]], Interval[Int]) =
       if tailRecEnd then (charsets, global) else
@@ -210,9 +210,8 @@ private[charsets] object CharsetsOps:
     val (startEndCharsets, nextGlobal) = go(groupByStartEnd(charsets), global, started, false)
     (startEndCharsets.values.foldLeft(Map.empty[Int, Charset[C]])(_ ++ _), nextGlobal)
 
-  private[this] def filterChars(charsets: Map[Int, Charset[Vector[Char]]], length: Int,
-                                consecutiveOption: Option[Consecutive], consecutiveChars: List[Char], start: Boolean,
-                                end: Boolean): Map[Int, Vector[Char]] =
+  private def filterChars(charsets: Map[Int, Charset[Vector[Char]]], length: Int, consecutiveOption: Option[Consecutive],
+                          consecutiveChars: List[Char], start: Boolean, end: Boolean): Map[Int, Vector[Char]] =
     val endCharsets = charsets.filter((_, charset) =>
       charset.endsWith && (charset.length & Interval.atOrAbove(1)).nonEmpty
     )
@@ -231,7 +230,7 @@ private[charsets] object CharsetsOps:
       ))
       .filter((_, chars) => chars.nonEmpty)
 
-  private[this] def nextChars(ch: Char, charset: Charset[Vector[Char]]): Vector[Char] =
+  private def nextChars(ch: Char, charset: Charset[Vector[Char]]): Vector[Char] =
     if charset.repeat then charset.chars else
       charset.chars.foldLeft((Vector.empty[Char], false)) { case ((acc, flag), c) =>
         if flag then (acc :+ c, true)
@@ -239,12 +238,12 @@ private[charsets] object CharsetsOps:
         else (acc :+ c, false)
       }._1
 
-  private[this] def calculateStep(a: Char, b: Char, caseSensitive: Boolean): Option[Int] =
+  private def calculateStep(a: Char, b: Char, caseSensitive: Boolean): Option[Int] =
     if a.isLetter && b.isLetter && caseSensitive then Some(a.toLower - b.toLower)
     else if (a.isDigit && b.isDigit) || (a.isLetter && b.isLetter) then Some(a - b)
     else None
 
-  private[this] def overConsecutiveLimit(ch: Char, consecutiveChars: List[Char], consecutive: Consecutive): Boolean =
+  private def overConsecutiveLimit(ch: Char, consecutiveChars: List[Char], consecutive: Consecutive): Boolean =
     consecutiveChars match
       case _ if consecutiveChars.length < consecutive.max => false
       case _ if consecutiveChars.length > consecutive.max => true
@@ -257,7 +256,7 @@ private[charsets] object CharsetsOps:
         calculateStep(ch, head, consecutive.caseSensitive).exists(step => step.abs <= consecutive.step)
       case _ => false
 
-  private[this] def nextConsecutiveChars(ch: Char, consecutiveChars: List[Char], consecutiveOption: Option[Consecutive])
+  private def nextConsecutiveChars(ch: Char, consecutiveChars: List[Char], consecutiveOption: Option[Consecutive])
   : List[Char] =
     if ch.isLetterOrDigit then
       (consecutiveOption, consecutiveChars) match
@@ -278,7 +277,7 @@ private[charsets] object CharsetsOps:
         case _ => List.empty
     else List.empty
 
-  private[this] def groupByStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]])
+  private def groupByStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]])
   : Map[StartEnd, Map[K, Charset[C]]] =
     charsets.groupBy((_, charset) =>
       if charset.startsWith && charset.endsWith then Both
@@ -287,10 +286,10 @@ private[charsets] object CharsetsOps:
       else Neither
     )
 
-  private[this] def combineAll[G[_] : Foldable](intervals: G[Interval[Int]]): Interval[Int] =
+  private def combineAll[G[_] : Foldable](intervals: G[Interval[Int]]): Interval[Int] =
     Foldable[G].fold(intervals)
 
-  private[this] def combineAll[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
+  private def combineAll[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
     Foldable[List].fold(charsets.values.toList.map(_.length))
 
   private[charsets] def combineStartEnd[K, C <: Iterable[Char]](charsets: Map[K, Charset[C]]): Interval[Int] =
@@ -315,7 +314,7 @@ private[charsets] object CharsetsOps:
       case _ =>
         bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
 
-  private[this] def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
+  private def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
     for
       chars <- nonEmpty(charset.chars).label("chars")
       length <-
@@ -328,7 +327,7 @@ private[charsets] object CharsetsOps:
       charset.copy(chars = chars.toVector, length = length.close)
   }.prepended(charset)
 
-  private[this] def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
+  private def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
   : Either[Error, Map[Int, Charset[C]]] =
     val startEndCharsets = groupByStartEnd(charsets)
     val bothMap = startEndCharsets.getOrElse(Both, Map.empty)
@@ -347,7 +346,7 @@ private[charsets] object CharsetsOps:
         yield charsets
       else charsets.asRight
 
-  private[this] def checkConsecutive(consecutiveOption: Option[Consecutive]): Either[Error, Option[Consecutive]] =
+  private def checkConsecutive(consecutiveOption: Option[Consecutive]): Either[Error, Option[Consecutive]] =
     traverse(consecutiveOption) { consecutive =>
       for
         _ <- positive(consecutive.max).label("max")

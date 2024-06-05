@@ -16,31 +16,31 @@ import spire.math.interval.*
 
 object CharsetsGen:
 
-  private[this] val chars: List[String] = List(
+  private val chars: List[String] = List(
     (0 to 9).mkString,
     ('a' to 'z').mkString,
     ('A' to 'Z').mkString,
     "~!_@.#*$^&"
   )
 
-  private[this] def charsetPointIntervalGen[F[_]: Applicative]: Gen[F, Interval[Int]] =
+  private def charsetPointIntervalGen[F[_]: Applicative]: Gen[F, Interval[Int]] =
     Gen.choose(1, 33).map(Interval.point)
 
-  private[this] def charsetAboveIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] =
+  private def charsetAboveIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] =
     for
       close <- nextBoolean[F]
       lower <- Gen.choose(-16, 17)
     yield
       if close then Interval.atOrAbove(lower) else Interval.above(lower)
 
-  private[this] def charsetBelowIntervalGen[F[_] : Monad]: Gen[F, Interval[Int]] =
+  private def charsetBelowIntervalGen[F[_] : Monad]: Gen[F, Interval[Int]] =
     for
       close <- nextBoolean[F]
       upper <- Gen.choose(if close then 1 else 2, 33)
     yield
       if close then Interval.atOrBelow(upper) else Interval.below(upper)
 
-  private[this] def charsetBoundedIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] =
+  private def charsetBoundedIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] =
     for
       closeLower <- nextBoolean[F]
       lower <- Gen.choose(-16, 17)
@@ -56,7 +56,7 @@ object CharsetsGen:
       if closeUpper then Closed(upper) else Open(upper)
     )
 
-  private[this] def charsetIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] = Gen.oneOf(
+  private def charsetIntervalGen[F[_]: Monad]: Gen[F, Interval[Int]] = Gen.oneOf(
     pure(Interval.all[Int]),
     charsetPointIntervalGen,
     charsetAboveIntervalGen,
@@ -64,7 +64,7 @@ object CharsetsGen:
     charsetBoundedIntervalGen
   )
 
-  private[this] def charsetBoundedIntervalGen[F[_]: Monad](lowerLowerBound: Int, lowerUpperBound: Int)
+  private def charsetBoundedIntervalGen[F[_]: Monad](lowerLowerBound: Int, lowerUpperBound: Int)
   : Gen[F, Interval[Int]] =
     for
       closeLower <- nextBoolean[F]
@@ -84,7 +84,7 @@ object CharsetsGen:
       if closeUpper then Closed(upper) else Open(upper)
     )
 
-  private[this] def charsetListGen[F[_]: Monad]: Gen[F, List[Charset[Iterable[Char]]]] =
+  private def charsetListGen[F[_]: Monad]: Gen[F, List[Charset[Iterable[Char]]]] =
     for
       size <- Gen.choose(1, chars.size + 1)
       chars <- shuffle[F, String, List[String]](chars)
@@ -112,7 +112,7 @@ object CharsetsGen:
     yield
       charsetList
 
-  private[this] def consecutiveGen[F[_]: Monad]: Gen[F, Consecutive] =
+  private def consecutiveGen[F[_]: Monad]: Gen[F, Consecutive] =
     (Gen.choose[F, Int](1, 9), Gen.choose[F, Int](0, 4), nextBoolean[F])
       .mapN(Consecutive.apply)
 

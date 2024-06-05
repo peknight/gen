@@ -1,6 +1,6 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
-ThisBuild / scalaVersion := "3.3.1"
+ThisBuild / scalaVersion := "3.4.2"
 
 ThisBuild / organization := "com.peknight"
 
@@ -56,4 +56,4 @@ val pekValidationVersion = pekVersion
 val pekSpireExtVersion = pekVersion
 val pekInstancesVersion = pekVersion
 
-val scalaCheckVersion = "1.17.0"
+val scalaCheckVersion = "1.18.0"
