@@ -1,6 +1,6 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
-ThisBuild / scalaVersion := "3.4.2"
+ThisBuild / scalaVersion := "3.5.0"
 
 ThisBuild / organization := "com.peknight"
 
@@ -44,7 +44,7 @@ lazy val genCharsets = (crossProject(JSPlatform, JVMPlatform) in file("gen-chars
     libraryDependencies ++= Seq(
       "com.peknight" %%% "random-core" % pekRandomVersion,
       "com.peknight" %%% "validation-spire" % pekValidationVersion,
-      "com.peknight" %%% "spire-ext" % pekSpireExtVersion,
+      "com.peknight" %%% "spire-ext" % pekExtVersion,
       "org.scalacheck" %%% "scalacheck" % scalaCheckVersion % Test,
       "com.peknight" %%% "cats-instances-scalacheck" % pekInstancesVersion % Test,
     ),
@@ -53,7 +53,7 @@ lazy val genCharsets = (crossProject(JSPlatform, JVMPlatform) in file("gen-chars
 val pekVersion = "0.1.0-SNAPSHOT"
 val pekRandomVersion = pekVersion
 val pekValidationVersion = pekVersion
-val pekSpireExtVersion = pekVersion
+val pekExtVersion = pekVersion
 val pekInstancesVersion = pekVersion
 
 val scalaCheckVersion = "1.18.0"
