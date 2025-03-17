@@ -4,7 +4,7 @@ import cats.data.{EitherT, StateT}
 import cats.syntax.applicative.*
 import cats.syntax.either.*
 import cats.syntax.eq.*
-import cats.{Foldable, Monad, Monoid}
+import cats.{Foldable, Monad, Monoid, Show}
 import com.peknight.error.Error
 import com.peknight.error.spire.math.interval.IntervalEmpty
 import com.peknight.error.syntax.either.{label, prepended}
@@ -46,6 +46,7 @@ private[charsets] object CharsetsOps:
   end given
 
   def generate[F[_]: Monad, C <: Iterable[Char]](charsets: Charsets[C]): StateT[F, Random[F], Either[Error, String]] =
+    given Show[Random[F]] = Show.fromToString
     StateT.get[F, Random[F]].liftS.flatMap { random => {
       for
         // 参数检查
@@ -83,6 +84,7 @@ private[charsets] object CharsetsOps:
 
   private def generate[F[_] : Monad](charsets: Map[Int, Charset[Vector[Char]]], length: Int,
                                      consecutiveOption: Option[Consecutive]): StateEitherT[F, String] =
+    given Show[(List[Char], List[Char], Map[Int, Charset[Vector[Char]]], Int)] = Show.fromToString
     Monad[[A] =>> StateEitherT[F, A]].tailRecM((List.empty[Char], List.empty[Char], charsets, length)) {
       case context @ (chars, consecutiveChars, charsets, remain) =>
         // 待生成长度为0，生成结束，返回结果
@@ -118,8 +120,9 @@ private[charsets] object CharsetsOps:
               .asLeft
     }
 
-  def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
+  def allocate[F[_] : Monad, K: Show](global: Interval[Int], elements: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
+    given Show[Interval[Int]] = Show.fromToString
     for
       elements <- listNonEmpty(elements.toList).label("elements")
       elements <- traverse(elements) {
@@ -314,18 +317,20 @@ private[charsets] object CharsetsOps:
       case _ =>
         bothLength + (onlyStartLength & Interval.atOrAbove(1)) + (onlyEndLength & Interval.atOrAbove(1)) + neitherLength
 
-  private def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] = {
-    for
-      chars <- nonEmpty(charset.chars).label("chars")
-      length <-
-        if charset.repeat then intervalNonEmpty(charset.length & Interval.atOrAbove(0)).label("length")
-        else intervalNonEmpty(charset.length & Interval.closed(0, chars.size)).label("length")
-      length <-
-        if length.isAt(0) then IntervalEmpty.label("length").asLeft[Interval[Int]]
-        else length.asRight[Error]
-    yield
-      charset.copy(chars = chars.toVector, length = length.close)
-  }.prepended(charset)
+  private def checkCharset[C <: Iterable[Char]](charset: Charset[C]): Either[Error, Charset[Vector[Char]]] =
+    val either =
+      for
+        chars <- nonEmpty(charset.chars).label("chars")
+        length <-
+          if charset.repeat then intervalNonEmpty(charset.length & Interval.atOrAbove(0)).label("length")
+          else intervalNonEmpty(charset.length & Interval.closed(0, chars.size)).label("length")
+        length <-
+          if length.isAt(0) then IntervalEmpty.label("length").asLeft[Interval[Int]]
+          else length.asRight[Error]
+      yield
+        charset.copy(chars = chars.toVector, length = length.close)
+    given Show[Charset[C]] = Show.fromToString
+    either.prepended(charset)
 
   private def checkStartEnd[C <: Iterable[Char]](charsets: Map[Int, Charset[C]], global: Interval[Int])
   : Either[Error, Map[Int, Charset[C]]] =
