@@ -1,12 +1,12 @@
 package com.peknight.gen.instances
 
+import cats.Monad
 import cats.data.StateT.pure
-import cats.{Applicative, FlatMap}
 import com.peknight.gen.{Choose, Gen}
 import com.peknight.random.state.{between, nextDouble, nextFloat}
 trait ChooseInstances extends ChooseInstances2:
 
-  given doubleChooseFlatMap[F[_]: Applicative: FlatMap]: Choose[F, Double] with
+  given doubleChooseFlatMap[F[_]: Monad]: Choose[F, Double] with
     def choose(minInclusive: Double, maxExclusive: Double): Gen[F, Double] =
       if maxExclusive <= minInclusive then throw new IllegalBoundsError(minInclusive, maxExclusive)
       else if minInclusive == Double.MinValue && maxExclusive == Double.MaxValue then nextDouble
@@ -20,7 +20,7 @@ trait ChooseInstances extends ChooseInstances2:
       else between(minInclusive, maxExclusive)
   end doubleChooseFlatMap
 
-  given floatChooseFlatMap[F[_]: Applicative: FlatMap]: Choose[F, Float] with
+  given floatChooseFlatMap[F[_]: Monad]: Choose[F, Float] with
     def choose(minInclusive: Float, maxExclusive: Float): Gen[F, Float] =
       if maxExclusive <= minInclusive then throw new IllegalBoundsError(minInclusive, maxExclusive)
       else if minInclusive == Float.MinValue && maxExclusive == Float.MaxValue then nextFloat
