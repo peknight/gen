@@ -1,9 +1,14 @@
 package com.peknight.gen.charsets
 
-import cats.Monad
-import com.peknight.random.Random
+import cats.data.EitherT
+import cats.{Monad, MonadError}
 import com.peknight.error.Error
+import com.peknight.error.syntax.applicativeError.asError
+import com.peknight.random.Random
+import com.peknight.random.provider.RandomProvider
 import spire.math.Interval
+
+import scala.collection.immutable.WrappedString
 
 case class Charsets[C <: Iterable[Char]](
                                           // 生成使用的字符集
@@ -15,5 +20,25 @@ case class Charsets[C <: Iterable[Char]](
                                           // 生成失败重试次数
                                           retry: Int = 3
                                         ):
-  def apply[F[_]: Monad](random: Random[F]): F[Either[Error, String]] =
+  def random[F[_]: Monad](random: Random[F]): F[Either[Error, String]] =
     CharsetsOps.generate[F, C](this).runA(random)
+  def apply[F[_]](using MonadError[F, Throwable], RandomProvider[F]): F[Either[Error, String]] =
+    val eitherT =
+      for
+        rand <- EitherT(RandomProvider[F].random.asError)
+        result <- EitherT(random[F](rand))
+      yield
+        result
+    eitherT.value
+object Charsets:
+  val default: Charsets[WrappedString] = Charsets(
+    List(
+      Charset((0 to 9).mkString, Interval.atOrAbove(3)),
+      Charset(('a' to 'z').mkString, Interval.atOrAbove(3)),
+      Charset(('A' to 'Z').mkString, Interval.atOrAbove(3)),
+      Charset("~!_@.#*$^&", Interval.atOrAbove(3))
+    ),
+    Interval.point(16),
+    Some(Consecutive(3,3))
+  )
+end Charsets

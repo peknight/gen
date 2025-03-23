@@ -47,6 +47,8 @@ lazy val genCharsets = (crossProject(JSPlatform, JVMPlatform) in file("gen-chars
       "com.peknight" %%% "spire-ext" % pekExtVersion,
       "org.scalacheck" %%% "scalacheck" % scalaCheckVersion % Test,
       "com.peknight" %%% "cats-instances-scalacheck" % pekInstancesVersion % Test,
+      "org.scalatest" %%% "scalatest-flatspec" % scalaTestVersion % Test,
+      "org.typelevel" %%% "cats-effect-testing-scalatest" % catsEffectTestingScalaTestVersion % Test,
     ),
   )
 
@@ -57,3 +59,5 @@ val pekExtVersion = pekVersion
 val pekInstancesVersion = pekVersion
 
 val scalaCheckVersion = "1.18.1"
+val scalaTestVersion = "3.2.19"
+val catsEffectTestingScalaTestVersion = "1.6.0"
