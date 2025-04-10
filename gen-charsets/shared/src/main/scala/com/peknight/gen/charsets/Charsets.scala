@@ -39,6 +39,6 @@ object Charsets:
       Charset("~!_@.#*$^&", Interval.atOrAbove(3))
     ),
     Interval.point(16),
-    Some(Consecutive(3,3))
+    Some(Consecutive(3, 3))
   )
 end Charsets
