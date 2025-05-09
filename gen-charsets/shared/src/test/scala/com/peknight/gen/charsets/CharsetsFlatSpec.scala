@@ -15,12 +15,12 @@ class CharsetsFlatSpec extends AsyncFlatSpec with AsyncIOSpec:
         given RandomProvider[IO] = provider
         result <- Charsets(
           List(
-            Charset((0 to 9).mkString, Interval.atOrAbove(2)),
-            Charset(('a' to 'z').mkString, Interval.atOrAbove(2)),
-            Charset(('A' to 'Z').mkString, Interval.atOrAbove(2)),
-            Charset("~!_@.#*$^&", Interval.atOrAbove(2))
+            Charset((0 to 9).mkString, Interval.atOrAbove(3)),
+            Charset(('a' to 'z').mkString, Interval.atOrAbove(3)),
+            Charset(('A' to 'Z').mkString, Interval.atOrAbove(3)),
+            Charset("~!_@.#*$^&", Interval.atOrAbove(3))
           ),
-          Interval.point(8),
+          Interval.point(16),
           Some(Consecutive(3, 3)))[IO]
         _ <- IO.println(result)
       yield
