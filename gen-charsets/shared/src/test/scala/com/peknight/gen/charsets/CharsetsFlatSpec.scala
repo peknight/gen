@@ -20,7 +20,7 @@ class CharsetsFlatSpec extends AsyncFlatSpec with AsyncIOSpec:
             Charset(('A' to 'Z').mkString, Interval.atOrAbove(2)),
             Charset("~!_@.#*$^&", Interval.atOrAbove(2))
           ),
-          Interval.point(8),
+          Interval.point(16),
           Some(Consecutive(3, 3)))[IO]
         _ <- IO.println(result)
       yield
