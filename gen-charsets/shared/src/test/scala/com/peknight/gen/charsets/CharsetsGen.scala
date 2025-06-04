@@ -84,12 +84,12 @@ object CharsetsGen:
       if closeUpper then Closed(upper) else Open(upper)
     )
 
-  private def charsetListGen[F[_]: Monad]: Gen[F, List[Charset[Iterable[Char]]]] =
+  private def charsetListGen[F[_]: Monad]: Gen[F, List[Charset]] =
     for
       size <- Gen.choose(1, chars.size + 1)
       chars <- shuffle[F, String, List[String]](chars)
       charsetList <- Monad[[A] =>> Gen[F, A]].tailRecM((
-        List.empty[Charset[Iterable[Char]]], chars.take(size), false, false
+        List.empty[Charset], chars.take(size), false, false
       )) {
         case (acc, Nil, _, _) => pure(acc.reverse.asRight)
         case (acc, head :: tail, start, end) =>
@@ -116,7 +116,7 @@ object CharsetsGen:
     (Gen.choose[F, Int](1, 9), Gen.choose[F, Int](0, 4), nextBoolean[F])
       .mapN(Consecutive.apply)
 
-  def apply[F[_]: Monad]: Gen[F, Charsets[Iterable[Char]]] =
+  def apply[F[_]: Monad]: Gen[F, Charsets] =
     for
       charsets <- charsetListGen
       elementLength = combineStartEnd(charsets.map { charset =>

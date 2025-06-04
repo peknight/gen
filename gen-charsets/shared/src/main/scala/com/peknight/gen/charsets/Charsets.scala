@@ -10,18 +10,17 @@ import spire.math.Interval
 
 import scala.collection.immutable.WrappedString
 
-case class Charsets[C <: Iterable[Char]](
-                                          // 生成使用的字符集
-                                          charsets: List[Charset[C]],
-                                          // 生成长度区间
-                                          length: Interval[Int],
-                                          // 连续性限制
-                                          consecutiveOption: Option[Consecutive] = None,
-                                          // 生成失败重试次数
-                                          retry: Int = 3
-                                        ):
-  def random[F[_]: Monad](random: Random[F]): F[Either[Error, String]] =
-    CharsetsOps.generate[F, C](this).runA(random)
+case class Charsets(
+                     // 生成使用的字符集
+                     charsets: List[Charset],
+                     // 生成长度区间
+                     length: Interval[Int],
+                     // 连续性限制
+                     consecutiveOption: Option[Consecutive] = None,
+                     // 生成失败重试次数
+                     retry: Int = 3
+                   ):
+  def random[F[_]: Monad](random: Random[F]): F[Either[Error, String]] = CharsetsOps.generate[F](this).runA(random)
   def apply[F[_]](using MonadError[F, Throwable], RandomProvider[F]): F[Either[Error, String]] =
     val eitherT =
       for
@@ -31,7 +30,7 @@ case class Charsets[C <: Iterable[Char]](
         result
     eitherT.value
 object Charsets:
-  val default: Charsets[WrappedString] = Charsets(
+  val default: Charsets = Charsets(
     List(
       Charset((0 to 9).mkString, Interval.atOrAbove(3)),
       Charset(('a' to 'z').mkString, Interval.atOrAbove(3)),

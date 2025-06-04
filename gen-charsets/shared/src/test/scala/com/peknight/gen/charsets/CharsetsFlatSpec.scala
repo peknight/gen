@@ -22,7 +22,7 @@ class CharsetsFlatSpec extends AsyncFlatSpec with AsyncIOSpec:
           ),
           Interval.point(16),
           Some(Consecutive(3, 3)))[IO]
-        _ <- IO.println(result)
+        _ <- IO.println(result.getOrElse(""))
       yield
         result
     run.asserting(either => assert(either.isRight))

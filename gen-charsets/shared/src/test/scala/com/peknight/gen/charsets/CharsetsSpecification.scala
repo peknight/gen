@@ -12,13 +12,13 @@ import org.scalacheck.{Gen, Properties}
 
 class CharsetsSpecification extends Properties("Charsets"):
 
-  val charsetsRandomsGen: Gen[(Charsets[Iterable[Char]], List[Random[Id]])] =
+  val charsetsRandomsGen: Gen[(Charsets, List[Random[Id]])] =
     for
       charsets <- Gen.long.map(seed => CharsetsGen[Id].runA(IdRandom(seed)))
       randoms <- List.fill(100)(Gen.long).traverse(_.map(IdRandom.apply))
     yield (charsets, randoms)
 
-  def review(seed: String): (Charsets[Iterable[Char]], List[(Random[Id], Either[Error, String])]) =
+  def review(seed: String): (Charsets, List[(Random[Id], Either[Error, String])]) =
     val (charsets, randoms) = charsetsRandomsGen.pureApply(Gen.Parameters.default, Seed.fromBase64(seed).get)
     (charsets, randoms.map(random => (random, charsets.random(random))))
 
