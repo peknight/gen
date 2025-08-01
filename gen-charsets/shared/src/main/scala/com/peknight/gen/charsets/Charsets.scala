@@ -3,12 +3,10 @@ package com.peknight.gen.charsets
 import cats.data.EitherT
 import cats.{Monad, MonadError}
 import com.peknight.error.Error
-import com.peknight.error.syntax.applicativeError.asError
+import com.peknight.error.syntax.applicativeError.faeLiftET
 import com.peknight.random.Random
 import com.peknight.random.provider.RandomProvider
 import spire.math.Interval
-
-import scala.collection.immutable.WrappedString
 
 case class Charsets(
                      // 生成使用的字符集
@@ -24,7 +22,7 @@ case class Charsets(
   def apply[F[_]](using MonadError[F, Throwable], RandomProvider[F]): F[Either[Error, String]] =
     val eitherT =
       for
-        rand <- EitherT(RandomProvider[F].random.asError)
+        rand <- RandomProvider[F].random.faeLiftET
         result <- EitherT(random[F](rand))
       yield
         result
