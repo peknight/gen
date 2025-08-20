@@ -4,24 +4,21 @@ import com.peknight.build.sbt.*
 commonSettings
 
 lazy val gen = (project in file("."))
+  .settings(name := "gen")
   .aggregate(
     genCore.jvm,
     genCore.js,
     genCharsets.jvm,
     genCharsets.js,
   )
-  .settings(
-    name := "gen",
-  )
 
 lazy val genCore = (crossProject(JVMPlatform, JSPlatform) in file("gen-core"))
+  .settings(name := "gen-core")
   .settings(crossDependencies(peknight.random))
-  .settings(
-    name := "gen-core",
-  )
 
 lazy val genCharsets = (crossProject(JVMPlatform, JSPlatform) in file("gen-charsets"))
   .dependsOn(genCore % Test)
+  .settings(name := "gen-charsets")
   .settings(crossDependencies(
     peknight.random,
     peknight.validation.spire,
@@ -33,6 +30,3 @@ lazy val genCharsets = (crossProject(JVMPlatform, JSPlatform) in file("gen-chars
     scalaTest.flatSpec,
     typelevel.catsEffect.testingScalaTest,
   ))
-  .settings(
-    name := "gen-charsets",
-  )
