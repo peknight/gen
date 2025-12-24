@@ -22,11 +22,10 @@ lazy val genCharsets = (crossProject(JVMPlatform, JSPlatform) in file("gen-chars
   .settings(crossDependencies(
     peknight.random,
     peknight.validation.spire,
-    peknight.ext.spire,
+    peknight.spire,
   ))
   .settings(crossTestDependencies(
-    scalaCheck,
-    peknight.instances.cats.scalaCheck,
+    peknight.cats.scalaCheck,
     scalaTest.flatSpec,
     typelevel.catsEffect.testingScalaTest,
   ))

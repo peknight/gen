@@ -2,7 +2,7 @@ package com.peknight.gen.charsets
 
 import cats.Id
 import cats.syntax.traverse.*
-import com.peknight.cats.instances.scalacheck.gen.given
+import com.peknight.cats.scalacheck.instances.gen.given
 import com.peknight.error.Error
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom

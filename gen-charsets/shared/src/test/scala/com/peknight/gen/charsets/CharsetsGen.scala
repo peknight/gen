@@ -9,8 +9,8 @@ import com.peknight.gen.Gen
 import com.peknight.gen.charsets.CharsetsOps.combineStartEnd
 import com.peknight.random.Random
 import com.peknight.random.state.{nextBoolean, shuffle}
-import com.peknight.spire.ext.syntax.bound.{lower, upper}
-import com.peknight.spire.ext.syntax.interval.close
+import com.peknight.spire.syntax.bound.{lower, upper}
+import com.peknight.spire.syntax.interval.close
 import spire.math.Interval
 import spire.math.interval.*
 

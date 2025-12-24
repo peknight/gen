@@ -11,8 +11,8 @@ import com.peknight.error.syntax.either.{label, prepended}
 import com.peknight.gen.charsets.CharsetsOps.StartEnd.{Both, End, Neither, Start}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
-import com.peknight.spire.ext.syntax.bound.{lower, upper}
-import com.peknight.spire.ext.syntax.interval.close
+import com.peknight.spire.syntax.bound.{lower, upper}
+import com.peknight.spire.syntax.interval.close
 import com.peknight.validation.collection.iterableOnce.either.nonEmpty
 import com.peknight.validation.collection.list.either.nonEmpty as listNonEmpty
 import com.peknight.validation.spire.math.interval.either.{nonNegative, positive, upperValueBounded, nonEmpty as intervalNonEmpty}
