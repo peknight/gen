@@ -8,7 +8,7 @@ import org.scalatest.flatspec.AsyncFlatSpec
 import spire.math.Interval
 
 class CharsetsFlatSpec extends AsyncFlatSpec with AsyncIOSpec:
-  "Charsets" should "succeed with default" in {
+  "Charsets" should "pass" in {
     val run =
       for
         provider <- RandomProvider.of[IO](Random(_))
