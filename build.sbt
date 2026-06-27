@@ -3,29 +3,31 @@ import com.peknight.build.sbt.*
 
 commonSettings
 
+ThisBuild / scalacOptions --= Seq("-Werror", "-Xfatal-warnings")
+
 lazy val gen = (project in file("."))
   .settings(name := "gen")
-  .aggregate(
-    genCore.jvm,
-    genCore.js,
-    genCharsets.jvm,
-    genCharsets.js,
-  )
+  .aggregate(genCore.projectRefs *)
+  .aggregate(genCharsets.projectRefs *)
 
-lazy val genCore = (crossProject(JVMPlatform, JSPlatform) in file("gen-core"))
+lazy val genCore = (projectMatrix in file("gen-core"))
   .settings(name := "gen-core")
-  .settings(crossDependencies(peknight.random))
+  .settings(libraryDependencies ++= dependencies(peknight.random))
+  .jvmPlatform(scalaVersions = Seq(scala.scala3.version))
+  .jsPlatform(scalaVersions = Seq(scala.scala3.version))
 
-lazy val genCharsets = (crossProject(JVMPlatform, JSPlatform) in file("gen-charsets"))
+lazy val genCharsets = (projectMatrix in file("gen-charsets"))
   .dependsOn(genCore % Test)
   .settings(name := "gen-charsets")
-  .settings(crossDependencies(
+  .settings(libraryDependencies ++= dependencies(
     peknight.random,
     peknight.validation.spire,
     peknight.spire,
   ))
-  .settings(crossTestDependencies(
+  .settings(libraryDependencies ++= testDependencies(
     peknight.cats.scalaCheck,
     scalaTest.flatSpec,
     typelevel.catsEffect.testingScalaTest,
   ))
+  .jvmPlatform(scalaVersions = Seq(scala.scala3.version))
+  .jsPlatform(scalaVersions = Seq(scala.scala3.version))
